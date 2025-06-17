@@ -26,17 +26,20 @@ Before running ytsurf, you need to have the following tools installed on your sy
 You can usually install these using your distribution's package manager. For example:
 
 ### Arch Linux:
+
 ```bash
 sudo pacman -S bash yt-dlp jq curl mpv fzf chafa rofi
 ```
 
 ### Debian/Ubuntu:
+
 ```bash
 sudo apt update
 sudo apt install bash yt-dlp jq curl mpv fzf chafa rofi
 ```
 
 ### Fedora:
+
 ```bash
 sudo dnf install bash yt-dlp jq curl mpv fzf chafa rofi
 ```
@@ -46,31 +49,34 @@ sudo dnf install bash yt-dlp jq curl mpv fzf chafa rofi
 1. **Save the script**:
    Save the provided script content to a file named `ytsurf` (or any name you prefer) in a directory that is in your system's PATH (e.g., `~/bin`, `/usr/local/bin`).
 
-   ```bash
-   mkdir -p ~/.local/bin
-   curl -o ~/.local/bin/ytsurf https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/ytsurf # Replace with your actual script URL if hosted
-   chmod +x ~/.local/bin/ytsurf
-   ```
+    ```bash
+    mkdir -p ~/.local/bin
+    curl -o ~/.local/bin/ytsurf https://raw.githubusercontent.com/Stan-breaks/ytsurf/main/ytsurf.sh
+    chmod +x ~/.local/bin/ytsurf
+    ```
 
-   **Note**: If you're copying and pasting, create the file manually:
-   ```bash
-   mkdir -p ~/.local/bin
-   vim ~/.local/bin/ytsurf # Or nano, or your preferred editor
-   # Paste the script content
-   # Save and exit
-   chmod +x ~/.local/bin/ytsurf
-   ```
+    **Note**: If you're copying and pasting, create the file manually:
+
+    ```bash
+    mkdir -p ~/.local/bin
+    vim ~/.local/bin/ytsurf # Or nano, or your preferred editor
+    # Paste the script content
+    # Save and exit
+    chmod +x ~/.local/bin/ytsurf
+    ```
 
 2. **Ensure ~/.local/bin is in your PATH**:
    If `~/.local/bin` isn't already in your PATH, add the following line to your `~/.bashrc`, `~/.zshrc`, or equivalent shell configuration file:
-   ```bash
-   export PATH="$HOME/.local/bin:$PATH"
-   ```
 
-   Then, reload your shell configuration:
-   ```bash
-   source ~/.bashrc # Or ~/.zshrc
-   ```
+    ```bash
+    export PATH="$HOME/.local/bin:$PATH"
+    ```
+
+    Then, reload your shell configuration:
+
+    ```bash
+    source ~/.bashrc # Or ~/.zshrc
+    ```
 
 ## Usage
 
@@ -85,6 +91,7 @@ If you run `ytsurf` without any arguments, it will prompt you to enter a search 
 ```bash
 ytsurf
 ```
+
 ```
 Enter Youtube: [type your query here]
 ```
