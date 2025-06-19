@@ -121,4 +121,4 @@ Use your arrow keys or type to fuzzy-search the list, then press Enter to select
 
 ## License
 
-This script is released under the MIT License.
+This script is released under the [GNU General Public License v3.0](LICENSE).
