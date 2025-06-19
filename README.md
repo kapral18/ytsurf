@@ -1,9 +1,7 @@
 # ytsurf
 ## Demo
 
-
-Uploading clip.mp4…
-
+https://github.com/user-attachments/assets/8c0d4057-db7b-457d-88cf-39aa782a1c6c
 
 **ytsurf** is a simple shell script that allows you to search for YouTube videos from your terminal, select one using fzf (with image previews via chafa) or rofi, and then play it with mpv. It leverages yt-dlp for fetching video information and jq for JSON parsing.
 
