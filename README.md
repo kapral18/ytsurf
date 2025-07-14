@@ -61,3 +61,7 @@ Navigate results with arrows, press Enter to play with mpv.
 ## License
 
 This script is released under the [GNU General Public License v3.0](LICENSE).
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Stan-breaks/ytsurf&type=Date)](https://www.star-history.com/#Stan-breaks/ytsurf&Date)
