@@ -48,24 +48,31 @@ else
 	echo "$json_data" >"$cache_file"
 fi
 
-# Build menu list with jq: show truncated title, duration (formatted), uploader
+# Build menu list with jq: show truncated title, duration (formatted), uploader, view count
 mapfile -t menu_list < <(echo "$json_data" | jq -r '
-    def pad2(n): if n < 10 then "0" + (n|tostring) else (n|tostring) end;
-    .[] |
-    .title as $title |
-    .duration as $dur |
-    .uploader as $uploader |
-    (
-      pad2($dur / 3600 | floor) + ":" +
-      pad2(($dur % 3600) / 60 | floor) + ":" +
-      pad2($dur % 60 | floor)
-    ) as $duration_fmt |
-    (
-      ($title | if length > 30 then .[:30] + "..." else . end)
-      + " [" + $duration_fmt + "] by " + $uploader
-    )
-  ')
+  def pad2(n): if n < 10 then "0" + (n|tostring) else (n|tostring) end;
+  def format_views(n):
+    if n >= 1000000 then (n / 1000000 | floor | tostring) + "M views"
+    elif n >= 1000 then (n / 1000 | floor | tostring) + "K views"
+    else (n | tostring) + " views"
+    end;
 
+  .[] |
+  .title as $title |
+  .duration as $dur |
+  .uploader as $uploader |
+  .view_count as $views |
+  (
+    pad2($dur / 3600 | floor) + ":" +
+    pad2(($dur % 3600) / 60 | floor) + ":" +
+    pad2($dur % 60 | floor)
+  ) as $duration_fmt |
+  (
+    ($title | if length > 30 then .[:30] + "..." else . end)
+    + " [" + $duration_fmt + "] by " + $uploader
+    + " (" + format_views($views) + ")"
+  )
+')
 # Check if menu is empty
 if [ ${#menu_list[@]} -eq 0 ]; then
 	echo "No results found for '$query'"
