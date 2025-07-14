@@ -8,12 +8,27 @@ TMPDIR=$(mktemp -d)
 cleanup() { rm -rf "$TMPDIR"; }
 trap cleanup EXIT
 
-# Read search query
-if [[ $# -eq 0 ]]; then
+# Parse arguments
+use_rofi=false
+query=""
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--rofi)
+		use_rofi=true
+		shift
+		;;
+	*)
+		query="$*"
+		break
+		;;
+	esac
+done
+
+if [[ -z "$query" ]]; then
 	read -rp "Enter Youtube: " query
-else
-	query="$*"
 fi
+
 [[ -z "$query" ]] && {
 	echo "No query entered. Exiting."
 	exit 1
@@ -61,9 +76,12 @@ fi
 export json_data
 export TMPDIR
 
-# Choose item with fzf+chafa or rofi
+# Choose item with fzf+chafa
 selected_title=""
-if command -v fzf &>/dev/null && command -v chafa &>/dev/null; then
+
+if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
+	selected_title=$(printf "%s\n" "${menu_list[@]}" | rofi -dmenu -p "Search YouTube:")
+elif command -v fzf &>/dev/null && command -v chafa &>/dev/null; then
 	selected_title=$(
 		printf "%s\n" "${menu_list[@]}" | fzf --prompt="Search YouTube: " \
 			--preview="bash -c '
@@ -86,8 +104,6 @@ if command -v fzf &>/dev/null && command -v chafa &>/dev/null; then
                 fi
             ' -- {n}"
 	)
-elif command -v rofi &>/dev/null; then
-	selected_title=$(printf "%s\n" "${menu_list[@]}" | rofi -dmenu -p "Search YouTube:")
 else
 	echo "fzf with chafa, or rofi is required." >&2
 	exit 1
