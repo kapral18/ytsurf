@@ -8,8 +8,15 @@ TMPDIR=$(mktemp -d)
 cleanup() { rm -rf "$TMPDIR"; }
 trap cleanup EXIT
 
+#creating the history file
+HISTORY_FILE="$CACHE_DIR/history.log"
+touch "$HISTORY_FILE"
+
 # Parse arguments
 use_rofi=false
+audio_only=false
+channel_mode=false
+history_mode=false
 query=""
 
 while [[ $# -gt 0 ]]; do
@@ -18,12 +25,89 @@ while [[ $# -gt 0 ]]; do
 		use_rofi=true
 		shift
 		;;
+	--audio)
+		audio_only=true
+		shift
+		;;
+	--channel)
+		channel_mode=true
+		shift
+		;;
+	--history)
+		history_mode=true
+		shift
+		;;
 	*)
 		query="$*"
 		break
 		;;
 	esac
 done
+
+if [[ "$history_mode" = true ]]; then
+	if [[ ! -s "$HISTORY_FILE" ]]; then
+		echo "No watched history yet."
+		exit 0
+	fi
+
+	mapfile -t history_ids < <(jq -r '.id' "$HISTORY_FILE")
+	mapfile -t history_titles < <(jq -r '.title' "$HISTORY_FILE")
+
+	# Check if menu is empty
+	if [[ ${#history_titles[@]} -eq 0 || ${#history_ids[@]} -eq 0 ]]; then
+		echo "No history empty"
+		exit 0
+	fi
+
+	declare -p history_ids >/tmp/history_ids.sh
+	export TMPDIR
+
+	if [[ "$use_rofi" = true ]]; then
+		selected_title=$(printf "%s\n" "${history_titles[@]}" | rofi -dmenu -p "Watch history:")
+	else
+		selected_title=$(
+			printf "%s\n" "${history_titles[@]}" | fzf --prompt="Watch history: " \
+				--preview="bash -c '
+            source /tmp/history_ids.sh
+            idx=\$((\$1))
+            id=\"\${history_ids[\$idx]}\"
+            if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then
+               thumb=\"https://i.ytimg.com/vi/\$id/hqdefault.jpg\"
+               img_path=\"\$TMPDIR/thumb_\$id.jpg\"
+
+            [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\"
+            chafa --symbols=block --size=80x40 \"\$img_path\" || echo \"(failed to render thumbnail)\"
+			      fi        
+      ' -- {n}"
+		)
+	fi
+
+	[ -z "$selected_title" ] && exit 1
+
+	selected_index=-1
+	for i in "${!history_titles[@]}"; do
+		if [[ "${history_titles[$i]}" == "${selected_title}" ]]; then
+			selected_index=$i
+			break
+		fi
+	done
+
+	if [[ $selected_index -lt 0 ]]; then
+		echo "Could not resolve selected video. Exiting."
+		exit 1
+	fi
+
+	video_id="${history_ids[$selected_index]}"
+	video_url="https://www.youtube.com/watch?v=$video_id"
+
+	echo "▶ Launching: $selected_title"
+	if [[ "$audio_only" = true ]]; then
+		mpv --no-video "$video_url"
+	else
+		mpv "$video_url"
+	fi
+	exit 0
+fi
 
 if [[ -z "$query" ]]; then
 	read -rp "Enter Youtube: " query
@@ -44,7 +128,13 @@ if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10) ]]; then
 	json_data=$(cat "$cache_file")
 else
 	# Fetch fresh data from yt-dlp as JSON lines, convert to JSON array
-	json_data=$(yt-dlp "ytsearch10:$query" --flat-playlist --print-json --no-warnings | jq -s '.')
+
+	if [[ "$channel_mode" = true ]]; then
+		search_expr="ytsearch10:$query channel"
+	else
+		search_expr="ytsearch10:$query"
+	fi
+	json_data=$(yt-dlp "$search_expr" --flat-playlist --print-json --no-warnings | jq -s '.')
 	echo "$json_data" >"$cache_file"
 fi
 
@@ -136,5 +226,14 @@ fi
 video_id=$(echo "$json_data" | jq -r ".[$selected_index].id")
 video_url="https://www.youtube.com/watch?v=$video_id"
 
+#Add the video to the history
+jq -n --arg title "$selected_title" --arg id "$video_id" '{title: $title, id: $id}' >>"$HISTORY_FILE"
+
 echo "▶ Launching: $selected_title"
-mpv "$video_url"
+
+if [[ "$audio_only" = true ]]; then
+	mpv --no-video "$video_url"
+else
+	mpv "$video_url"
+fi
+query=""
