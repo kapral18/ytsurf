@@ -226,8 +226,17 @@ fi
 video_id=$(echo "$json_data" | jq -r ".[$selected_index].id")
 video_url="https://www.youtube.com/watch?v=$video_id"
 
-#Add the video to the history
-jq -n --arg title "$selected_title" --arg id "$video_id" '{title: $title, id: $id}' >>"$HISTORY_FILE"
+tmp_history="$(mktemp)"
+
+# Add new entry at the top
+jq -n --arg title "$selected_title" --arg id "$video_id" \
+	'{title: $title, id: $id}' >"$tmp_history"
+
+# Append all previous entries except this one
+jq -c --arg id "$video_id" 'select(.id != $id)' "$HISTORY_FILE" >>"$tmp_history" || true
+
+# Replace original file
+mv "$tmp_history" "$HISTORY_FILE"
 
 echo "▶ Launching: $selected_title"
 
