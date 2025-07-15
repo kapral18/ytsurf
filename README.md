@@ -12,6 +12,9 @@ https://github.com/user-attachments/assets/8c0d4057-db7b-457d-88cf-39aa782a1c6c
 - Interactive selection with fzf (thumbnail previews) or rofi
 - 10-minute result caching
 - Direct mpv playback
+- History tracking
+- audio only option
+- channel search option
 
 ## Installation
 
@@ -47,13 +50,17 @@ Install on Arch: `sudo pacman -S yt-dlp jq curl mpv fzf chafa rofi`
 ## Usage
 
 ```bash
-ytsurf lofi hip hop study
+ytsurf lofi hip hop study #basic usage
+ytsurf --audio say my name #audio only
+ytsurf --channel the primetime #channel search
+ytsurf --history
 ```
 
 Or run without arguments to enter interactive mode:
 
 ```bash
 ytsurf
+ytsurf --rofi use with rofi instead
 ```
 
 Navigate results with arrows, press Enter to play with mpv.
