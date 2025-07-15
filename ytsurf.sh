@@ -19,6 +19,8 @@ channel_mode=false
 history_mode=false
 query=""
 
+limit=10  # default search result limit
+
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--rofi)
@@ -37,12 +39,23 @@ while [[ $# -gt 0 ]]; do
 		history_mode=true
 		shift
 		;;
+	--limit)
+		shift
+		if [[ -n "$1" && "$1" =~ ^[0-9]+$ ]]; then
+			limit="$1"
+			shift
+		else
+			echo "Error: --limit requires a number"
+			exit 1
+		fi
+		;;
 	*)
 		query="$*"
 		break
 		;;
 	esac
 done
+
 
 if [[ "$history_mode" = true ]]; then
 	if [[ ! -s "$HISTORY_FILE" ]]; then
@@ -130,9 +143,9 @@ else
 	# Fetch fresh data from yt-dlp as JSON lines, convert to JSON array
 
 	if [[ "$channel_mode" = true ]]; then
-		search_expr="ytsearch10:$query channel"
+		search_expr="ytsearch${limit}:$query channel"
 	else
-		search_expr="ytsearch10:$query"
+		search_expr="ytsearch10${limit}:$query"
 	fi
 	json_data=$(yt-dlp "$search_expr" --flat-playlist --print-json --no-warnings | jq -s '.')
 	echo "$json_data" >"$cache_file"
