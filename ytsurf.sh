@@ -19,7 +19,7 @@ channel_mode=false
 history_mode=false
 query=""
 
-limit=10  # default search result limit
+limit=10 # default search result limit
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -55,7 +55,6 @@ while [[ $# -gt 0 ]]; do
 		;;
 	esac
 done
-
 
 if [[ "$history_mode" = true ]]; then
 	if [[ ! -s "$HISTORY_FILE" ]]; then
@@ -145,7 +144,7 @@ else
 	if [[ "$channel_mode" = true ]]; then
 		search_expr="ytsearch${limit}:$query channel"
 	else
-		search_expr="ytsearch10${limit}:$query"
+		search_expr="ytsearch${limit}:$query"
 	fi
 	json_data=$(yt-dlp "$search_expr" --flat-playlist --print-json --no-warnings | jq -s '.')
 	echo "$json_data" >"$cache_file"
