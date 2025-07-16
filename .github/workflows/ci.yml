@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck jq curl mpv fzf chafa yt-dlp
+
+    - name: Lint with ShellCheck
+      run: shellcheck ytsurf.sh
+
+    - name: Run Sanity Checks
+      run: |
+        # Test that the script runs with the --history flag (non-interactive)
+        ./ytsurf.sh --history
+
+        # Test that the script exits with an error on invalid input
+        # We expect this to fail, so we invert the exit code with !
+        ! ./ytsurf.sh --limit "not-a-number"
