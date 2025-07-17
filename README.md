@@ -62,13 +62,16 @@ ytsurf --audio npr tiny desk
 ytsurf --download how to make ramen
 
 # Select a specific video format before playback/download
-ytsurf --format 8k space video
+ytsurf --format space video
 
 # Search for a channel
 ytsurf --channel the primetime
 
 # View watch history
 ytsurf --history
+
+#use rofi instead of fzf
+ytsurf --rofi
 
 # interactive use
 ytsurf
