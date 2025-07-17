@@ -40,11 +40,11 @@ Add `~/.local/bin` to your PATH if it's not already there.
 
 ## Dependencies
 
-- **Required:** `bash`, `yt-dlp`, `jq`, `curl`, `mpv`, `fzf`, `chafa` (for fzf thumbnails)
+- **Required:** `bash`, `yt-dlp`, `jq`, `curl`, `mpv`, `fzf`, `chafa`,`ffmpeg` (for fzf thumbnails)
 - **Optional:** `rofi`
 
 Install on Arch Linux:
-`sudo pacman -S yt-dlp jq curl mpv fzf chafa rofi awk`
+`sudo pacman -S yt-dlp jq curl mpv fzf chafa rofi ffmpeg`
 
 ## Usage
 
@@ -53,19 +53,19 @@ Install on Arch Linux:
 ytsurf lofi hip hop study
 
 # Search with 25 results instead of the default 10
-ytsurf --limit 25 "dnb mix"
+ytsurf --limit 25 dnb mix
 
 # Audio-only playback
-ytsurf --audio "npr tiny desk"
+ytsurf --audio npr tiny desk
 
 # Download the selected video
-ytsurf --download "how to make ramen"
+ytsurf --download how to make ramen
 
 # Select a specific video format before playback/download
-ytsurf --format "8k space video"
+ytsurf --format 8k space video
 
 # Search for a channel
-ytsurf --channel "the primetime"
+ytsurf --channel the primetime
 
 # View watch history
 ytsurf --history
