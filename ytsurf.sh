@@ -154,7 +154,16 @@ perform_action() {
 	if [[ "$download_mode" = true ]]; then
 		mkdir -p "$download_dir"
 		echo "Downloading to $download_dir..."
-		yt-dlp -o "$download_dir/%(title)s [%(id)s].%(ext)s" ${format_code:+--format "$format_code"} "$video_url"
+		if [[ "$audio_only" = true ]]; then
+			yt-dlp -x -o "$download_dir/%(title)s [%(id)s].%(ext)s" --audio-format mp3 --audio-quality 0 "$video_url"
+		else
+
+			yt-dlp \
+				--remux-video mp4 \
+				-o "$download_dir/%(title)s [%(id)s].%(ext)s" \
+				${format_code:+--format "$format_code"} \
+				"$video_url"
+		fi
 	else
 		if [[ "$audio_only" = true ]]; then
 			mpv --no-video ${format_code:+--ytdl-format="$format_code"} "$video_url"
@@ -344,4 +353,3 @@ video_title="$selected_title"
 
 add_to_history "$video_id" "$video_title"
 perform_action "$video_url" "$video_title"
-
