@@ -240,6 +240,7 @@ if [[ "$history_mode" = true ]]; then
 	video_id="${history_ids[$selected_index]}"
 	video_url="https://www.youtube.com/watch?v=$video_id"
 
+	add_to_history "$video_id" "$selected_title"
 	perform_action "$video_url" "$selected_title"
 	exit 0
 fi
