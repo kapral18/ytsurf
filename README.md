@@ -17,6 +17,7 @@ https://github.com/user-attachments/assets/8c0d4057-db7b-457d-88cf-39aa782a1c6c
 - Playback history
 - Audio-only mode
 - Channel search
+- limit search results
 
 ## Installation
 
