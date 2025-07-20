@@ -157,7 +157,6 @@ perform_action() {
 		if [[ "$audio_only" = true ]]; then
 			yt-dlp -x -o "$download_dir/%(title)s [%(id)s].%(ext)s" --audio-format mp3 --audio-quality 0 "$video_url"
 		else
-
 			yt-dlp \
 				--remux-video mp4 \
 				-o "$download_dir/%(title)s [%(id)s].%(ext)s" \
@@ -166,9 +165,9 @@ perform_action() {
 		fi
 	else
 		if [[ "$audio_only" = true ]]; then
-			mpv --no-video ${format_code:+--ytdl-format="$format_code"} "$video_url"
+			mpv --no-video --really-quiet ${format_code:+--ytdl-format="$format_code"} "$video_url"
 		else
-			mpv ${format_code:+--ytdl-format="$format_code"} "$video_url"
+			mpv --really-quiet ${format_code:+--ytdl-format="$format_code"} "$video_url"
 		fi
 	fi
 }
@@ -180,7 +179,7 @@ add_to_history() {
 	local tmp_history
 	tmp_history="$(mktemp)"
 	jq -n --arg title "$video_title" --arg id "$video_id" '{title: $title, id: $id}' >"$tmp_history"
-	jq -c --arg id "$video_id" 'select(.id != $id)' "$HISTORY_FILE" >>"$tmp_history" || true
+	jq -c --arg id "$video_id" 'select(.id != $id)' "$HISTORY_FILE" >>"$tmp_history" 2>/dev/null || true
 	mv "$tmp_history" "$HISTORY_FILE"
 }
 
@@ -193,15 +192,15 @@ if [[ "$history_mode" = true ]]; then
 		exit 0
 	fi
 
-	mapfile -t history_ids < <(jq -r '.id' "$HISTORY_FILE")
-	mapfile -t history_titles < <(jq -r '.title' "$HISTORY_FILE")
+	mapfile -t history_ids < <(jq -r '.id' "$HISTORY_FILE" 2>/dev/null || echo "")
+	mapfile -t history_titles < <(jq -r '.title' "$HISTORY_FILE" 2>/dev/null || echo "")
 
 	if [[ ${#history_titles[@]} -eq 0 || ${#history_ids[@]} -eq 0 ]]; then
 		echo "History is empty or corrupted."
 		exit 0
 	fi
 
-	declare -p history_ids >"/tmp/history_ids_$(basename "$TMPDIR")"
+	declare -p history_ids history_titles >"/tmp/history_ids"
 	export TMPDIR
 
 	selected_title=""
@@ -210,16 +209,21 @@ if [[ "$history_mode" = true ]]; then
 	else
 		selected_title=$(printf "%s\n" "${history_titles[@]}" | fzf --prompt="Watch history: " \
 			--preview="bash -c '                                                                        
-     source /tmp/history_ids_$(basename "$TMPDIR")                                                  
+     source /tmp/history_ids                                                  
      idx=\$((\$1))                                                                                  
-     id=\"\${history_ids[\$idx]}\"                                                                  
+     id=\"\${history_ids[\$idx]}\"
+     title=\"\${history_titles[\$idx]}\"
      if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then                                             
          thumb=\"https://i.ytimg.com/vi/\$id/hqdefault.jpg\"                                        
          img_path=\"\$TMPDIR/thumb_\$id.jpg\"                                                       
-         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\"                      
-         chafa --symbols=block --size=80x40 \"\$img_path\" || echo \"(failed to render thumbnail)\"                     
-    fi' -- {n}")
-
+         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\" 2>/dev/null                      
+         chafa --symbols=block --size=80x40 \"\$img_path\" 2>/dev/null || echo \"(failed to render thumbnail)\";
+         echo
+         echo -e \"\\033[1;36mTitle:\\033[0m \\033[1m\$title\\033[0m\"
+         echo -e \"\\033[1;35mFrom History\\033[0m\"
+     else
+        echo \"No preview available\"
+     fi' -- {n}")
 	fi
 
 	[ -z "$selected_title" ] && exit 1
@@ -263,7 +267,7 @@ fi
 cache_key=$(echo -n "$query" | sha256sum | cut -d' ' -f1)
 cache_file="$CACHE_DIR/$cache_key.json"
 
-if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10) ]]; then
+if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10 2>/dev/null) ]]; then
 	json_data=$(cat "$cache_file")
 else
 	search_expr="ytsearch${limit}:${query}"
@@ -273,33 +277,7 @@ else
 fi
 
 # Build menu list
-mapfile -t menu_list < <(echo "$json_data" | jq -r '
-  def pad2(n): if n < 10 then "0" + (n|tostring) else (n|tostring) end;
-  def format_views(n):
-    if n == null then "N/A"
-    elif n >= 1000000 then (n / 1000000 | floor | tostring) + "M views"
-    elif n >= 1000 then (n / 1000 | floor | tostring) + "K views"
-    else (n | tostring) + " views"
-    end;
-  .[] |
-  .title as $title |
-  .duration as $dur |
-  .uploader as $uploader |
-  .view_count as $views |
-  (
-    if $dur == null then " N/A "
-    else
-      pad2($dur / 3600 | floor) + ":" +
-      pad2(($dur % 3600) / 60 | floor) + ":" +
-      pad2($dur % 60 | floor)
-    end
-  ) as $duration_fmt |
-  (
-    ($title | if length > 40 then .[:40] + "..." else . end)
-    + " [" + $duration_fmt + "] by " + ($uploader // "N/A")
-    + " (" + format_views($views) + ")"
-  )
-')
+mapfile -t menu_list < <(echo "$json_data" | jq -r '.[]|.title' 2>/dev/null)
 
 if [[ ${#menu_list[@]} -eq 0 ]]; then
 	echo "No results found for '$query'"
@@ -316,14 +294,42 @@ if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
 elif command -v fzf &>/dev/null && command -v chafa &>/dev/null; then
 	selected_title=$(
 		printf "%s\n" "${menu_list[@]}" | fzf --prompt="Search YouTube: " \
-			--preview="bash -c '                                                                          
+			--preview="bash -c '
+     format_views() {
+            local n=\$1
+            if [[ \"\$n\" == \"null\" || -z \"\$n\" || \"\$n\" == \"0\" ]]; then
+                echo \"N/A\"
+            elif (( n >= 1000000 )); then
+                echo \"\$((n / 1000000))M views\"
+            elif (( n >= 1000 )); then
+                echo \"\$((n / 1000))K views\"
+            else
+                echo \"\$n views\"
+            fi
+        }
+
      idx=\$((\$1))                                                                                    
-     id=\$(echo \"\$json_data\" | jq -r \".[\"\$idx\"].id\")                                          
+     id=\$(echo \"\$json_data\" | jq -r \".[\$idx].id\" 2>/dev/null)                                          
+     title=\$(echo \"\$json_data\" | jq -r \".[\$idx].title\" 2>/dev/null)
+     duration=\$(echo \"\$json_data\" | jq -r \".[\$idx].duration_string\" 2>/dev/null)
+     views=\$(echo \"\$json_data\" | jq -r \".[\$idx].view_count\" 2>/dev/null)
+     author=\$(echo \"\$json_data\" | jq -r \".[\$idx].uploader\" 2>/dev/null)
+
      if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then                                               
+         echo 
+         echo
+         echo -e \"\\033[1;36mTitle:\\033[0m \\033[1m\$title\\033[0m\"
+         echo -e \"\\033[1;33mDuration:\\033[0m \$duration\"
+         echo -e \"\\033[1;32mViews:\\033[0m \$(format_views \"\$views\")\"
+         echo -e \"\\033[1;35mAuthor:\\033[0m \$author\"
+         echo 
+         echo
          thumb=\"https://i.ytimg.com/vi/\$id/hqdefault.jpg\"                                          
          img_path=\"\$TMPDIR/thumb_\$id.jpg\"                                                         
-         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\"                        
-         chafa --symbols=block --size=80x40 \"\$img_path\" || echo \"(failed to render thumbnail)\"   
+         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\" 2>/dev/null
+         chafa --symbols=block --size=80x40 \"\$img_path\" 2>/dev/null || echo \"(failed to render thumbnail)\"   
+              else
+        echo \"No preview available\"
      fi
  ' -- {n}"
 	)
@@ -348,7 +354,7 @@ if [[ $selected_index -lt 0 ]]; then
 	exit 1
 fi
 
-video_id=$(echo "$json_data" | jq -r ".[$selected_index].id")
+video_id=$(echo "$json_data" | jq -r ".[$selected_index].id" 2>/dev/null)
 video_url="https://www.youtube.com/watch?v=$video_id"
 video_title="$selected_title"
 
