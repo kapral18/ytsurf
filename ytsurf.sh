@@ -29,7 +29,7 @@ download_dir="${XDG_DOWNLOAD_DIR:-$HOME/Downloads}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ytsurf"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ytsurf"
 mkdir -p "$CACHE_DIR" "$CONFIG_DIR"
-HISTORY_FILE="$CACHE_DIR/history.log"
+HISTORY_FILE="$CACHE_DIR/history.json"
 touch "$HISTORY_FILE"
 
 # Source user config file if it exists
@@ -176,9 +176,12 @@ perform_action() {
 add_to_history() {
 	local video_id="$1"
 	local video_title="$2"
+	local video_duration="$3"
+	local video_author="$4"
+	local video_views="$5"
 	local tmp_history
 	tmp_history="$(mktemp)"
-	jq -n --arg title "$video_title" --arg id "$video_id" '{title: $title, id: $id}' >"$tmp_history"
+	jq -n --arg title "$video_title" --arg id "$video_id" --arg duration "$video_duration" --arg author "$video_author" --arg views "$video_views" '{title: $title, id: $id, duration: $duration, author: $author, views: $views}' >"$tmp_history"
 	jq -c --arg id "$video_id" 'select(.id != $id)' "$HISTORY_FILE" >>"$tmp_history" 2>/dev/null || true
 	mv "$tmp_history" "$HISTORY_FILE"
 }
@@ -199,7 +202,9 @@ if [[ "$history_mode" = true ]]; then
 		echo "History is empty or corrupted."
 		exit 0
 	fi
+	json_data=$(cat "$HISTORY_FILE")
 
+	export json_data
 	declare -p history_ids history_titles >"/tmp/history_ids"
 	export TMPDIR
 
@@ -209,18 +214,42 @@ if [[ "$history_mode" = true ]]; then
 	else
 		selected_title=$(printf "%s\n" "${history_titles[@]}" | fzf --prompt="Watch history: " \
 			--preview="bash -c '                                                                        
+        format_views() {
+            local n=\$1
+            if [[ \"\$n\" == \"null\" || -z \"\$n\" || \"\$n\" == \"0\" ]]; then
+                echo \"N/A\"
+            elif (( n >= 1000000 )); then
+                echo \"\$((n / 1000000))M views\"
+            elif (( n >= 1000 )); then
+                echo \"\$((n / 1000))K views\"
+            else
+                echo \"\$n views\"
+            fi
+        }
+
      source /tmp/history_ids                                                  
      idx=\$((\$1))                                                                                  
      id=\"\${history_ids[\$idx]}\"
      title=\"\${history_titles[\$idx]}\"
+     duration=\$(echo \"\$json_data\" | jq -r -s \".[\$idx].duration\" 2>/dev/null)
+     views=\$(echo \"\$json_data\" | jq -r -s \".[\$idx].views\" 2>/dev/null)
+     author=\$(echo \"\$json_data\" | jq -r -s \".[\$idx].author\" 2>/dev/null)
+
+
      if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then                                             
+         echo
+         echo
+         echo -e \"\\033[1;35mFrom History\\033[0m\"
+         echo -e \"\\033[1;36mTitle:\\033[0m \\033[1m\$title\\033[0m\"
+         echo -e \"\\033[1;33mDuration:\\033[0m \$duration\"
+         echo -e \"\\033[1;32mViews:\\033[0m \$(format_views \"\$views\")\"
+         echo -e \"\\033[1;35mAuthor:\\033[0m \$author\"         echo
+         echo
          thumb=\"https://i.ytimg.com/vi/\$id/hqdefault.jpg\"                                        
          img_path=\"\$TMPDIR/thumb_\$id.jpg\"                                                       
          [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\" 2>/dev/null                      
          chafa --symbols=block --size=80x40 \"\$img_path\" 2>/dev/null || echo \"(failed to render thumbnail)\";
          echo
-         echo -e \"\\033[1;36mTitle:\\033[0m \\033[1m\$title\\033[0m\"
-         echo -e \"\\033[1;35mFrom History\\033[0m\"
      else
         echo \"No preview available\"
      fi' -- {n}")
@@ -244,7 +273,7 @@ if [[ "$history_mode" = true ]]; then
 	video_id="${history_ids[$selected_index]}"
 	video_url="https://www.youtube.com/watch?v=$video_id"
 
-	add_to_history "$video_id" "$selected_title"
+	add_to_history "$video_id" "$video_title" "$video_duration" "$video_author" "$video_views"
 	perform_action "$video_url" "$selected_title"
 	exit 0
 fi
@@ -355,8 +384,12 @@ if [[ $selected_index -lt 0 ]]; then
 fi
 
 video_id=$(echo "$json_data" | jq -r ".[$selected_index].id" 2>/dev/null)
+video_author=$(echo "$json_data" | jq -r ".[$selected_index].uploader" 2>/dev/null)
+video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration_string" 2>/dev/null)
+video_views=$(echo "$json_data" | jq -r ".[$selected_index].view_count" 2>/dev/null)
+
 video_url="https://www.youtube.com/watch?v=$video_id"
 video_title="$selected_title"
 
-add_to_history "$video_id" "$video_title"
+add_to_history "$video_id" "$video_title" "$video_duration" "$video_author" "$video_views"
 perform_action "$video_url" "$video_title"
