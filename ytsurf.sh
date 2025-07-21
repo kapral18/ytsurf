@@ -158,6 +158,7 @@ perform_action() {
 			yt-dlp -x -o "$download_dir/%(title)s [%(id)s].%(ext)s" --audio-format mp3 --audio-quality 0 "$video_url"
 		else
 			yt-dlp \
+				--audio-quality 0 \
 				--remux-video mp4 \
 				-o "$download_dir/%(title)s [%(id)s].%(ext)s" \
 				${format_code:+--format "$format_code"} \
@@ -272,8 +273,11 @@ if [[ "$history_mode" = true ]]; then
 
 	video_id="${history_ids[$selected_index]}"
 	video_url="https://www.youtube.com/watch?v=$video_id"
+	video_duration=$(echo "$json_data" | jq -r -s ".[$selected_index].duration_string")
+	video_views=$(echo "$json_data" | jq -r -s ".[$selected_index].view_count")
+	video_author=$(echo "$json_data" | jq -r -s ".[$selected_index].uploader")
 
-	add_to_history "$video_id" "$video_title" "$video_duration" "$video_author" "$video_views"
+	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views"
 	perform_action "$video_url" "$selected_title"
 	exit 0
 fi
