@@ -29,8 +29,11 @@ max_history_entries=100
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ytsurf"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ytsurf"
 mkdir -p "$CACHE_DIR" "$CONFIG_DIR"
+
 HISTORY_FILE="$CACHE_DIR/history.json"
-touch "$HISTORY_FILE"
+if [[ ! -f "$HISTORY_FILE" ]]; then
+	echo "[]" >"$HISTORY_FILE"
+fi
 
 # Source user config file if it exists
 CONFIG_FILE="$CONFIG_DIR/config"
@@ -178,10 +181,34 @@ add_to_history() {
 	local video_views="$5"
 	local tmp_history
 	tmp_history="$(mktemp)"
-	jq -c --arg id "$video_id" 'select(.id != $id)' "$HISTORY_FILE" >>"$tmp_history" 2>/dev/null || true
-	jq -n --arg title "$video_title" --arg id "$video_id" --arg duration "$video_duration" --arg author "$video_author" --arg views "$video_views" '{title: $title, id: $id, duration: $duration, author: $author, views: $views}' >"$tmp_history"
 
-	jq ".[0:$max_history_entries]" "$HISTORY_FILE" >"$tmp_history"
+	# Validate existing JSON
+	if ! jq empty "$HISTORY_FILE" 2>/dev/null; then
+		echo "[]" >"$HISTORY_FILE"
+	fi
+
+	# Create new entry and merge with existing history (removing duplicates and limiting size)
+	jq -n \
+		--arg title "$video_title" \
+		--arg id "$video_id" \
+		--arg duration "$video_duration" \
+		--arg author "$video_author" \
+		--arg views "$video_views" \
+		--argjson max_entries "${max_history_entries:-100}" \
+		--slurpfile existing "$HISTORY_FILE" \
+		'
+        {
+            title: $title,
+            id: $id,
+            duration: $duration,
+            author: $author,
+            views: $views,
+        } as $new_entry |
+        ([$new_entry] + ($existing[0] | map(select(.id != $id)))) |
+        .[0:$max_entries]
+        ' >"$tmp_history"
+
+	# Atomic move
 	mv "$tmp_history" "$HISTORY_FILE"
 }
 
@@ -194,8 +221,8 @@ if [[ "$history_mode" = true ]]; then
 		exit 0
 	fi
 
-	mapfile -t history_ids < <(jq -r '.id' "$HISTORY_FILE" 2>/dev/null || echo "")
-	mapfile -t history_titles < <(jq -r '.title' "$HISTORY_FILE" 2>/dev/null || echo "")
+	mapfile -t history_ids < <(jq -r '.[].id' "$HISTORY_FILE" 2>/dev/null || echo "")
+	mapfile -t history_titles < <(jq -r '.[].title' "$HISTORY_FILE" 2>/dev/null || echo "")
 
 	if [[ ${#history_titles[@]} -eq 0 || ${#history_ids[@]} -eq 0 ]]; then
 		echo "History is empty or corrupted."
@@ -230,9 +257,9 @@ if [[ "$history_mode" = true ]]; then
      idx=\$((\$1))                                                                                  
      id=\"\${history_ids[\$idx]}\"
      title=\"\${history_titles[\$idx]}\"
-     duration=\$(echo \"\$json_data\" | jq -r -s \".[\$idx].duration\" 2>/dev/null)
-     views=\$(echo \"\$json_data\" | jq -r -s \".[\$idx].views\" 2>/dev/null)
-     author=\$(echo \"\$json_data\" | jq -r -s \".[\$idx].author\" 2>/dev/null)
+     duration=\$(echo \"\$json_data\" | jq -r  \".[\$idx].duration\" 2>/dev/null)
+     views=\$(echo \"\$json_data\" | jq -r  \".[\$idx].views\" 2>/dev/null)
+     author=\$(echo \"\$json_data\" | jq -r  \".[\$idx].author\" 2>/dev/null)
 
 
      if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then                                             
@@ -271,9 +298,9 @@ if [[ "$history_mode" = true ]]; then
 
 	video_id="${history_ids[$selected_index]}"
 	video_url="https://www.youtube.com/watch?v=$video_id"
-	video_duration=$(echo "$json_data" | jq -r -s ".[$selected_index].duration_string")
-	video_views=$(echo "$json_data" | jq -r -s ".[$selected_index].view_count")
-	video_author=$(echo "$json_data" | jq -r -s ".[$selected_index].uploader")
+	video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
+	video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
+	video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
 
 	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views"
 	perform_action "$video_url" "$selected_title"
