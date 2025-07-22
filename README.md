@@ -65,9 +65,6 @@ ytsurf --download how to make ramen
 # Select a specific video format before playback/download
 ytsurf --format space video
 
-# Search for a channel
-ytsurf --channel the primetime
-
 # View watch history
 ytsurf --history
 
