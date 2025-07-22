@@ -21,9 +21,9 @@ audio_only=false
 use_rofi=false
 download_mode=false
 history_mode=false
-channel_mode=false
 format_selection=false
 download_dir="${XDG_DOWNLOAD_DIR:-$HOME/Downloads}"
+max_history_entries=100
 
 # System directories
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ytsurf"
@@ -55,10 +55,6 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--audio)
 		audio_only=true
-		shift
-		;;
-	--channel)
-		channel_mode=true
 		shift
 		;;
 	--history)
@@ -182,8 +178,10 @@ add_to_history() {
 	local video_views="$5"
 	local tmp_history
 	tmp_history="$(mktemp)"
-	jq -n --arg title "$video_title" --arg id "$video_id" --arg duration "$video_duration" --arg author "$video_author" --arg views "$video_views" '{title: $title, id: $id, duration: $duration, author: $author, views: $views}' >"$tmp_history"
 	jq -c --arg id "$video_id" 'select(.id != $id)' "$HISTORY_FILE" >>"$tmp_history" 2>/dev/null || true
+	jq -n --arg title "$video_title" --arg id "$video_id" --arg duration "$video_duration" --arg author "$video_author" --arg views "$video_views" '{title: $title, id: $id, duration: $duration, author: $author, views: $views}' >"$tmp_history"
+
+	jq ".[0:$max_history_entries]" "$HISTORY_FILE" >"$tmp_history"
 	mv "$tmp_history" "$HISTORY_FILE"
 }
 
@@ -304,7 +302,6 @@ if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10 2>/dev/null) ]]; then
 	json_data=$(cat "$cache_file")
 else
 	search_expr="ytsearch${limit}:${query}"
-	[[ "$channel_mode" = true ]] && search_expr+="/channel"
 	json_data=$(yt-dlp "$search_expr" --flat-playlist --print-json --no-warnings | jq -s '.')
 	echo "$json_data" >"$cache_file"
 fi
