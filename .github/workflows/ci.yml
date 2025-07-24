@@ -21,8 +21,7 @@ jobs:
 
     - name: Install xh
       run: |
-        curl -sL https://github.com/ducaale/xh/releases/latest/download/xh-x86_64-unknown-linux-gnu.tar.gz | tar xz
-        sudo mv xh-x86_64-unknown-linux-gnu/xh /usr/local/bin/
+        curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
     - name: Lint with ShellCheck
       run: shellcheck ytsurf.sh
 
