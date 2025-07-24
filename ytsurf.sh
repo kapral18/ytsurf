@@ -542,7 +542,7 @@ EOF
     
     if command -v chafa &>/dev/null; then
         img_path="$TMPDIR/thumb_$id.jpg"
-        [[ ! -f "$img_path" ]] && curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
+        [[ ! -f "$img_path" ]] && xh -d "$thumbnail" > "$img_path" 2>/dev/null
         chafa --symbols=block --size=80x40 "$img_path" 2>/dev/null || echo "(failed to render thumbnail)"
     else
         echo "(chafa not available - no thumbnail preview)"

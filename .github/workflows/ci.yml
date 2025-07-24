@@ -17,7 +17,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y shellcheck jq curl mpv fzf chafa yt-dlp
+        sudo apt-get install -y shellcheck jq xh mpv fzf chafa yt-dlp
 
     - name: Lint with ShellCheck
       run: shellcheck ytsurf.sh
