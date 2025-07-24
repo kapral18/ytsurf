@@ -21,7 +21,7 @@ jobs:
 
     - name: Install xh
       run: |
-        curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
+       sudo curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
     - name: Lint with ShellCheck
       run: shellcheck ytsurf.sh
 
