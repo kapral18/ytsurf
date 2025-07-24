@@ -51,78 +51,7 @@ max_history_entries="$DEFAULT_MAX_HISTORY_ENTRIES"
 # Runtime variables
 query=""
 TMPDIR=""
-SPINNER_PID=""
 
-#=============================================================================
-# LOADING UI FUNCTIONS
-#=============================================================================
-
-# Start a spinner animation
-start_spinner() {
-	local message="${1:-Loading...}"
-	local delay=0.1
-	local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-
-	{
-		while true; do
-			for ((i = 0; i < ${#spinstr}; i++)); do
-				printf '\r\033[36m%s\033[0m %s' "${spinstr:$i:1}" "$message"
-				sleep $delay
-			done
-		done
-	} &
-
-	SPINNER_PID=$!
-	tput civis 2>/dev/null || true
-}
-
-# Stop the spinner
-stop_spinner() {
-	if [[ -n "$SPINNER_PID" ]]; then
-		kill "$SPINNER_PID" 2>/dev/null || true
-		wait "$SPINNER_PID" 2>/dev/null || true
-		SPINNER_PID=""
-	fi
-	# Clear the line and show cursor
-	printf '\r%*s\r' "$(tput cols 2>/dev/null || echo 80)" ""
-	tput cnorm 2>/dev/null || true
-}
-
-# Run a command with loading animation
-with_loading() {
-	local message="$1"
-	shift
-	local command=("$@")
-
-	start_spinner "$message"
-
-	local exit_code=0
-	"${command[@]}" || exit_code=$?
-
-	stop_spinner
-	return $exit_code
-}
-
-# Run command with status feedback
-with_status() {
-	local message="$1"
-	shift
-	local command=("$@")
-
-	start_spinner "$message"
-
-	local exit_code=0
-	if "${command[@]}" >/dev/null 2>&1; then
-		stop_spinner
-		printf '\033[32m✓\033[0m %s\n' "$message"
-	else
-		exit_code=$?
-		stop_spinner
-		printf '\033[31m✗\033[0m %s - Failed\n' "$message"
-	fi
-
-	return $exit_code
-}
 #=============================================================================
 # UTILITY FUNCTIONS
 #=============================================================================
@@ -613,7 +542,7 @@ EOF
     
     if command -v chafa &>/dev/null; then
         img_path="$TMPDIR/thumb_$id.jpg"
-        [[ ! -f "$img_path" ]] && xh -d "$thumbnail" > "$img_path" 2>/dev/null
+        [[ ! -f "$img_path" ]] && curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
         chafa --symbols=block --size=80x40 "$img_path" 2>/dev/null || echo "(failed to render thumbnail)"
     else
         echo "(chafa not available - no thumbnail preview)"
