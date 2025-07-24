@@ -21,7 +21,9 @@ jobs:
 
     - name: Install xh (non-interactive)
       run: |
-        curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | env INSTALL_DIR=$HOME/.local/bin sh
+        mkdir -p ~/.local/bin
+        curl -sL https://github.com/ducaale/xh/releases/latest/download/xh-x86_64-unknown-linux-musl.tar.gz | tar xz --strip-components=1 -C ~/.local/bin xh-x86_64-unknown-linux-musl/xh
+        chmod +x ~/.local/bin/xh
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Lint with ShellCheck
