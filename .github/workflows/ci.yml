@@ -22,9 +22,11 @@ jobs:
     - name: Install xh (non-interactive)
       run: |
         mkdir -p ~/.local/bin
-        curl -sL https://github.com/ducaale/xh/releases/latest/download/xh-x86_64-unknown-linux-musl.tar.gz | tar xz --strip-components=1 -C ~/.local/bin xh-x86_64-unknown-linux-musl/xh
+        curl -sL https://github.com/ducaale/xh/releases/download/v0.24.1/xh-v0.24.1-x86_64-unknown-linux-musl.tar.gz \
+        | tar xz --strip-components=1 -C ~/.local/bin xh-v0.24.1-x86_64-unknown-linux-musl/xh
         chmod +x ~/.local/bin/xh
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
 
     - name: Lint with ShellCheck
       run: shellcheck ytsurf.sh
