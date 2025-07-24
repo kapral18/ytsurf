@@ -179,6 +179,8 @@ add_to_history() {
 	local video_duration="$3"
 	local video_author="$4"
 	local video_views="$5"
+	local video_published="$6"
+	local video_thumbnail="$7"
 	local tmp_history
 	tmp_history="$(mktemp)"
 
@@ -194,6 +196,8 @@ add_to_history() {
 		--arg duration "$video_duration" \
 		--arg author "$video_author" \
 		--arg views "$video_views" \
+		--arg published "$video_published" \
+		--arg thumbnail "$video_thumbnail" \
 		--argjson max_entries "${max_history_entries:-100}" \
 		--slurpfile existing "$HISTORY_FILE" \
 		'
@@ -203,6 +207,8 @@ add_to_history() {
             duration: $duration,
             author: $author,
             views: $views,
+            published: $published,
+            thumbnail: $thumbnail,
         } as $new_entry |
         ([$new_entry] + ($existing[0] | map(select(.id != $id)))) |
         .[0:$max_entries]
@@ -239,27 +245,16 @@ if [[ "$history_mode" = true ]]; then
 		selected_title=$(printf "%s\n" "${history_titles[@]}" | rofi -dmenu -p "Watch history:")
 	else
 		selected_title=$(printf "%s\n" "${history_titles[@]}" | fzf --prompt="Watch history: " \
-			--preview="bash -c '                                                                        
-        format_views() {
-            local n=\$1
-            if [[ \"\$n\" == \"null\" || -z \"\$n\" || \"\$n\" == \"0\" ]]; then
-                echo \"N/A\"
-            elif (( n >= 1000000 )); then
-                echo \"\$((n / 1000000))M views\"
-            elif (( n >= 1000 )); then
-                echo \"\$((n / 1000))K views\"
-            else
-                echo \"\$n views\"
-            fi
-        }
-
-     source /tmp/history_ids                                                  
-     idx=\$((\$1))                                                                                  
+			--preview="bash -c '
+     source /tmp/history_ids
+     idx=\$((\$1))
      id=\"\${history_ids[\$idx]}\"
      title=\"\${history_titles[\$idx]}\"
      duration=\$(echo \"\$json_data\" | jq -r  \".[\$idx].duration\" 2>/dev/null)
      views=\$(echo \"\$json_data\" | jq -r  \".[\$idx].views\" 2>/dev/null)
      author=\$(echo \"\$json_data\" | jq -r  \".[\$idx].author\" 2>/dev/null)
+     published=\$(echo \"\$json_data\" | jq -r  \".[\$idx].published\" 2>/dev/null)
+     thumbnail=\$(echo \"\$json_data\" | jq -r  \".[\$idx].thumbnail\" 2>/dev/null)
 
 
      if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then                                             
@@ -268,12 +263,13 @@ if [[ "$history_mode" = true ]]; then
          echo -e \"\\033[1;35mFrom History\\033[0m\"
          echo -e \"\\033[1;36mTitle:\\033[0m \\033[1m\$title\\033[0m\"
          echo -e \"\\033[1;33mDuration:\\033[0m \$duration\"
-         echo -e \"\\033[1;32mViews:\\033[0m \$(format_views \"\$views\")\"
-         echo -e \"\\033[1;35mAuthor:\\033[0m \$author\"         echo
+         echo -e \"\\033[1;32mViews:\\033[0m \$views\"
+         echo -e \"\\033[1;35mAuthor:\\033[0m \$author\"         
+         echo -e \"\\033[1;34mUploaded:\\033[0m \$published\"         
          echo
-         thumb=\"https://i.ytimg.com/vi/\$id/hqdefault.jpg\"                                        
+         echo
          img_path=\"\$TMPDIR/thumb_\$id.jpg\"                                                       
-         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\" 2>/dev/null                      
+         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumbnail\" -o \"\$img_path\" 2>/dev/null                      
          chafa --symbols=block --size=80x40 \"\$img_path\" 2>/dev/null || echo \"(failed to render thumbnail)\";
          echo
      else
@@ -301,8 +297,10 @@ if [[ "$history_mode" = true ]]; then
 	video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
 	video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
 	video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
+	video_published=$(echo "$json_data" | jq -r ".[$selected_index].published" 2>/dev/null)
+	video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail" 2>/dev/null)
 
-	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views"
+	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
 	perform_action "$video_url" "$selected_title"
 	exit 0
 fi
@@ -328,11 +326,28 @@ cache_file="$CACHE_DIR/$cache_key.json"
 if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10 2>/dev/null) ]]; then
 	json_data=$(cat "$cache_file")
 else
-	search_expr="ytsearch${limit}:${query}"
-	json_data=$(yt-dlp "$search_expr" --flat-playlist --print-json --no-warnings | jq -s '.')
+	encoded_query=$(printf '%s' "$query" | jq -sRr @uri)
+
+	json_data=$(xh "https://www.youtube.com/results?search_query=${encoded_query}&sp=EgIQAQ%253D%253D&hl=en&gl=US" |
+		grep -oP 'var ytInitialData = \{.*?\};' |
+		sed 's/^var ytInitialData = //' | sed 's/;$//' |
+		jq -r "
+    [
+      .. | objects |
+      select(has(\"videoRenderer\")) |
+      .videoRenderer | {
+        title: .title.runs[0].text,
+        id: .videoId,
+        author: .longBylineText.runs[0].text,
+        published: .publishedTimeText.simpleText,
+        duration: .lengthText.simpleText,
+        views: .viewCountText.simpleText,
+        thumbnail: (.thumbnail.thumbnails | sort_by(.width) | last.url)
+      }
+    ] | .[:${limit}]
+  ")
 	echo "$json_data" >"$cache_file"
 fi
-
 # Build menu list
 mapfile -t menu_list < <(echo "$json_data" | jq -r '.[]|.title' 2>/dev/null)
 
@@ -352,38 +367,27 @@ elif command -v fzf &>/dev/null && command -v chafa &>/dev/null; then
 	selected_title=$(
 		printf "%s\n" "${menu_list[@]}" | fzf --prompt="Search YouTube: " \
 			--preview="bash -c '
-     format_views() {
-            local n=\$1
-            if [[ \"\$n\" == \"null\" || -z \"\$n\" || \"\$n\" == \"0\" ]]; then
-                echo \"N/A\"
-            elif (( n >= 1000000 )); then
-                echo \"\$((n / 1000000))M views\"
-            elif (( n >= 1000 )); then
-                echo \"\$((n / 1000))K views\"
-            else
-                echo \"\$n views\"
-            fi
-        }
-
      idx=\$((\$1))                                                                                    
      id=\$(echo \"\$json_data\" | jq -r \".[\$idx].id\" 2>/dev/null)                                          
      title=\$(echo \"\$json_data\" | jq -r \".[\$idx].title\" 2>/dev/null)
-     duration=\$(echo \"\$json_data\" | jq -r \".[\$idx].duration_string\" 2>/dev/null)
-     views=\$(echo \"\$json_data\" | jq -r \".[\$idx].view_count\" 2>/dev/null)
-     author=\$(echo \"\$json_data\" | jq -r \".[\$idx].uploader\" 2>/dev/null)
+     duration=\$(echo \"\$json_data\" | jq -r \".[\$idx].duration\" 2>/dev/null)
+     views=\$(echo \"\$json_data\" | jq -r \".[\$idx].views\" 2>/dev/null)
+     author=\$(echo \"\$json_data\" | jq -r \".[\$idx].author\" 2>/dev/null)
+     published=\$(echo \"\$json_data\" | jq -r \".[\$idx].published\" 2>/dev/null)
+     thumbnail=\$(echo \"\$json_data\" | jq -r \".[\$idx].thumbnail\" 2>/dev/null)
 
      if [[ -n \"\$id\" && \"\$id\" != \"null\" ]]; then                                               
          echo 
          echo
          echo -e \"\\033[1;36mTitle:\\033[0m \\033[1m\$title\\033[0m\"
          echo -e \"\\033[1;33mDuration:\\033[0m \$duration\"
-         echo -e \"\\033[1;32mViews:\\033[0m \$(format_views \"\$views\")\"
+         echo -e \"\\033[1;32mViews:\\033[0m \$views\"
          echo -e \"\\033[1;35mAuthor:\\033[0m \$author\"
+         echo -e \"\\033[1;34mUploaded:\\033[0m \$published\"
          echo 
          echo
-         thumb=\"https://i.ytimg.com/vi/\$id/hqdefault.jpg\"                                          
          img_path=\"\$TMPDIR/thumb_\$id.jpg\"                                                         
-         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumb\" -o \"\$img_path\" 2>/dev/null
+         [[ ! -f \"\$img_path\" ]] && curl -fsSL \"\$thumbnail\" -o \"\$img_path\" 2>/dev/null
          chafa --symbols=block --size=80x40 \"\$img_path\" 2>/dev/null || echo \"(failed to render thumbnail)\"   
               else
         echo \"No preview available\"
@@ -412,12 +416,14 @@ if [[ $selected_index -lt 0 ]]; then
 fi
 
 video_id=$(echo "$json_data" | jq -r ".[$selected_index].id" 2>/dev/null)
-video_author=$(echo "$json_data" | jq -r ".[$selected_index].uploader" 2>/dev/null)
-video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration_string" 2>/dev/null)
-video_views=$(echo "$json_data" | jq -r ".[$selected_index].view_count" 2>/dev/null)
+video_author=$(echo "$json_data" | jq -r ".[$selected_index].author" 2>/dev/null)
+video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration" 2>/dev/null)
+video_views=$(echo "$json_data" | jq -r ".[$selected_index].views" 2>/dev/null)
+video_published=$(echo "$json_data" | jq -r ".[$selected_index].published" 2>/dev/null)
+video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail" 2>/dev/null)
 
 video_url="https://www.youtube.com/watch?v=$video_id"
 video_title="$selected_title"
 
-add_to_history "$video_id" "$video_title" "$video_duration" "$video_author" "$video_views"
+add_to_history "$video_id" "$video_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
 perform_action "$video_url" "$video_title"
