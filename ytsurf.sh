@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ -z "$BASH_VERSION" ]]; then
+	echo "This script requires Bash." >&2
+	exit 1
+fi
 # -- CONFIGURATION --
 # The script sources a config file for default settings.
 # You can override these by creating a file at ~/.config/ytsurf/config
