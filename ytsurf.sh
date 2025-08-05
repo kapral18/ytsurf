@@ -275,8 +275,10 @@ perform_action() {
 	echo "▶ Performing action on: $video_title"
 
 	if [[ "$download_mode" = true ]]; then
+		notify-send -t 5000 "ytsurf" "Downloading to $video_title"
 		download_video "$video_url" "$format_code"
 	else
+		notify-send -t 5000 "ytsurf" "Playing $video_title"
 		play_video "$video_url" "$format_code"
 	fi
 }
