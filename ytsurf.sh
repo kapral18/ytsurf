@@ -3,7 +3,7 @@ set -euo pipefail
 
 #=============================================================================
 # ytsurf - search, stream, or download YouTube videos from your terminal 🎵📺
-# Version: 1.5.0
+# Version: 1.6.0
 #=============================================================================
 
 # Exit if not running in bash
