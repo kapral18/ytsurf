@@ -3,7 +3,7 @@ set -euo pipefail
 
 #=============================================================================
 # ytsurf - search, stream, or download YouTube videos from your terminal 🎵📺
-# Version: 1.6.0
+# Version: 1.7.0
 #=============================================================================
 
 # Exit if not running in bash
@@ -16,7 +16,7 @@ fi
 # CONSTANTS AND DEFAULTS
 #=============================================================================
 
-readonly SCRIPT_VERSION="1.4.0"
+readonly SCRIPT_VERSION="1.7.0"
 readonly SCRIPT_NAME="ytsurf"
 
 # Default configuration values
@@ -199,6 +199,26 @@ parse_arguments() {
 }
 
 #=============================================================================
+# ACTION SELECTION
+#=============================================================================
+
+select_action() {
+	echo "action"
+	local chosen_action
+	local prompt="Select Action:"
+	local header="Available Actions"
+	local items=("watch" "download")
+
+	if [[ "$use_rofi" == true ]]; then
+		chosen_action=$(printf "%s\n" "${items[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
+	elif [[ "$use_rofi" == false ]]; then
+		chosen_action=$(printf "%s\n" "${items[@]}" | fzf --prompt="$prompt" --header="$header")
+	fi
+	echo "$chosen_action"
+	return 0
+}
+
+#=============================================================================
 # FORMAT SELECTION
 #=============================================================================
 
@@ -264,6 +284,13 @@ perform_action() {
 	local video_title="$2"
 
 	# Get format if format selection is enabled
+	local download_mode
+
+	if ! download_mode="$(select_action)"; then
+		echo "Action selection cancelled" >&2
+		return 1
+	fi
+
 	local format_code=""
 	if [[ "$format_selection" = true ]]; then
 		if ! format_code=$(select_format "$video_url"); then
