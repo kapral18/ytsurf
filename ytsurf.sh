@@ -203,6 +203,30 @@ parse_arguments() {
 #=============================================================================
 
 select_action() {
+	local chosen_action
+	local prompt="Select Action:"
+	local header="Available Actions"
+	local items=("watch" "download")
+
+	if [[ "$use_rofi" == true ]]; then
+		chosen_action=$(printf "%s\n" "${items[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
+	elif [[ "$use_rofi" == false ]]; then
+		chosen_action=$(printf "%s\n" "${items[@]}" | fzf --prompt="$prompt" --header="$header")
+	fi
+
+	if [[ "$chosen_action" == "watch" ]]; then
+		echo false
+	else
+		echo true
+	fi
+	return 0
+}
+
+#=============================================================================
+# CONTENT TYPE SELECTION
+#=============================================================================
+
+select_content() {
 	echo "action"
 	local chosen_action
 	local prompt="Select Action:"
@@ -217,7 +241,6 @@ select_action() {
 	echo "$chosen_action"
 	return 0
 }
-
 #=============================================================================
 # FORMAT SELECTION
 #=============================================================================
@@ -282,13 +305,17 @@ select_format() {
 perform_action() {
 	local video_url="$1"
 	local video_title="$2"
+	local img_path="$3"
 
 	# Get format if format selection is enabled
-	local download_mode
 
-	if ! download_mode="$(select_action)"; then
-		echo "Action selection cancelled" >&2
-		return 1
+	if [[ "$download_mode" == false ]]; then
+		local selection
+		if ! selection="$(select_action)"; then
+			echo "Action selection cancelled" >&2
+			return 1
+		fi
+		download_mode="$selection"
 	fi
 
 	local format_code=""
@@ -302,10 +329,10 @@ perform_action() {
 	echo "▶ Performing action on: $video_title"
 
 	if [[ "$download_mode" = true ]]; then
-		notify-send -t 5000 "ytsurf" "Downloading to $video_title"
+		notify-send -t 5000 -i "$img_path" "Ytsurf" "Downloading to $video_title"
 		download_video "$video_url" "$format_code"
 	else
-		notify-send -t 5000 "ytsurf" "Playing $video_title"
+		notify-send -t 5000 -i "$img_path" "Ytsurf" "Playing $video_title"
 		play_video "$video_url" "$format_code"
 	fi
 }
@@ -453,16 +480,18 @@ handle_history_mode() {
 	video_id="${history_ids[$selected_index]}"
 	video_url="https://www.youtube.com/watch?v=$video_id"
 
-	local video_duration video_author video_views video_published video_thumbnail
+	local video_duration video_author video_views video_published video_thumbnail img_path
 	video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
 	video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
 	video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
 	video_published=$(echo "$json_data" | jq -r ".[$selected_index].published")
 	video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail")
 
+	img_path="$TMPDIR/thumb_$video_id.jpg"
+
 	# Update history and perform action
 	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
-	perform_action "$video_url" "$selected_title"
+	perform_action "$video_url" "$selected_title" "$img_path"
 }
 
 #=============================================================================
@@ -660,7 +689,7 @@ handle_search_mode() {
 	fi
 
 	# Extract video details
-	local video_id video_url video_author video_duration video_views video_published video_thumbnail
+	local video_id video_url video_author video_duration video_views video_published video_thumbnail img_path
 	video_id=$(echo "$json_data" | jq -r ".[$selected_index].id")
 	video_url="https://www.youtube.com/watch?v=$video_id"
 	video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
@@ -669,9 +698,10 @@ handle_search_mode() {
 	video_published=$(echo "$json_data" | jq -r ".[$selected_index].published")
 	video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail")
 
+	img_path="$TMPDIR/thumb_$video_id.jpg"
 	# Add to history and perform action
 	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
-	perform_action "$video_url" "$selected_title"
+	perform_action "$video_url" "$selected_title" "$img_path"
 }
 
 #=============================================================================
