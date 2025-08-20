@@ -291,7 +291,7 @@ select_format() {
 		chosen_format="$chosen_res"
 	else
 		local height=${chosen_res%p*}
-		chosen_format="bestvideo[height<=${height}]+bestaudio/best[height<=${height}]"
+		chosen_format="bestvideo[height<=${height}]+bestaudio/best"
 	fi
 
 	echo "$chosen_format"
