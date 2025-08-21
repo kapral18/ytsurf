@@ -3,7 +3,7 @@
 A simple shell script to search YouTube videos from your terminal and play them with mpv.
 
 ## Demo
-<img width="1366" height="768" alt="250723_22h08m01s_screenshot" src="https://github.com/user-attachments/assets/9364deff-ae49-449b-9ae2-7c6d9605c02b" />
+<img width="1366" height="768" alt="250814_13h56m36s_screenshot" src="https://github.com/user-attachments/assets/0771f53b-ad16-41a2-9938-9aaaf0eaa1ae" />
 
 
 ## Features
