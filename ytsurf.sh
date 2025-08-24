@@ -201,24 +201,6 @@ parse_arguments() {
 # Spinner
 #=============================================================================
 
-spinner() {
-	local message=$1
-	local spin='◐◓◑◒'
-	local colors=(31 33 32 36 34 35) # red yellow green cyan blue magenta
-	local i=0
-	local start
-	start=$(date +%s)
-	while true; do
-		local c=${colors[$((i % ${#colors[@]}))]}
-		printf "\r\e[1;${c}m%s\e[0m $message..." "${spin:$((i % 4)):1}"
-		i=$((i + 1))
-		sleep 0.1
-		if (($(date +%s) - start >= 10)); then
-			break
-		fi
-	done
-}
-
 #=============================================================================
 # ACTION SELECTION
 #=============================================================================
@@ -339,7 +321,6 @@ perform_action() {
 		download_mode="$selection"
 	fi
 
-	spinner "Fetching formats" &
 	local format_code=""
 	if [[ "$format_selection" = true ]]; then
 		if ! format_code=$(select_format "$video_url"); then
@@ -350,7 +331,6 @@ perform_action() {
 
 	echo "▶ Performing action on: $video_title"
 
-	spinner " " &
 	if [[ "$download_mode" = true ]]; then
 		notify-send -t 5000 -i "$img_path" "Ytsurf" "Downloading to $video_title"
 		download_video "$video_url" "$format_code"
@@ -590,7 +570,7 @@ fetch_search_results() {
 	echo "$parsed_data"
 }
 
-create_preview_script() {
+create_preview_script_fzf() {
 	local is_history="${1:-false}"
 
 	cat <<'EOF'
@@ -635,6 +615,23 @@ fi
 EOF
 }
 
+create_preview_script_rofi() {
+	local menu=""
+
+	while read -r item; do
+		title=$(jq -r '.title' <<<"$item")
+		id=$(jq -r '.id' <<<"$item")
+		thumbnail=$(jq -r '.thumbnail' <<<"$item")
+		img_path="$TMPDIR/thumb_$id.jpg"
+
+		[[ ! -f "$img_path" ]] && curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
+
+		menu+="$title\0icon\x1fthumbnail://$img_path\n"
+	done < <(jq -c ".[:$limit][]" <<<"$json_data")
+
+	printf "%b" "$menu"
+}
+
 select_from_menu() {
 	local menu_items=("$@")
 	local prompt="${menu_items[-3]}"
@@ -654,10 +651,10 @@ select_from_menu() {
 
 	local selected_item=""
 	if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
-		selected_item=$(printf "%s\n" "${menu_items[@]}" | rofi -dmenu -p "$prompt")
+		selected_item=$(create_preview_script_rofi | rofi -dmenu -show-icons)
 	elif command -v fzf &>/dev/null; then
 		local preview_script
-		preview_script=$(create_preview_script "$is_history")
+		preview_script=$(create_preview_script_fzf "$is_history")
 
 		selected_item=$(printf "%s\n" "${menu_items[@]}" | fzf \
 			--prompt="$prompt" \
