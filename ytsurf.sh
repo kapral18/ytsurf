@@ -605,7 +605,7 @@ play_video() {
   local video_url="$1"
   local format_code="$2"
 
-  local mpv_args=(--really-quiet)
+  local mpv_args=(--really-quiet --geometry=100%x100%+0+0)
 
   # Fix window size to fit screen properly
   mpv_args+=(--autofit-larger=100%x100% --autofit=85%x85%)
@@ -826,7 +826,7 @@ fetch_search_results_ytdlp() {
         end
       ),
       views: ((.view_count // 0) | tostring + " views"),
-      thumbnail: .thumbnail
+      thumbnail: (.thumbnails | if type == "array" and length > 0 then sort_by(.width) | last.url else null end)
     })
   ' 2>/dev/null)
 
