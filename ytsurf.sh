@@ -8,8 +8,8 @@ set -euo pipefail
 
 # Exit if not running in bash
 if [[ -z "$BASH_VERSION" ]]; then
-	echo "This script requires Bash." >&2
-	exit 1
+  echo "This script requires Bash." >&2
+  exit 1
 fi
 
 #=============================================================================
@@ -58,7 +58,7 @@ TMPDIR=""
 
 # Print help message
 print_help() {
-	cat <<EOF
+  cat <<EOF
 $SCRIPT_NAME - search, stream, or download YouTube videos from your terminal 🎵📺
 
 USAGE:
@@ -90,112 +90,204 @@ EOF
 
 # Print version information
 print_version() {
-	echo "$SCRIPT_NAME v$SCRIPT_VERSION"
+  echo "$SCRIPT_NAME v$SCRIPT_VERSION"
 }
 
 # Initialize directories and files
 init_directories() {
-	mkdir -p "$CACHE_DIR" "$CONFIG_DIR"
-
-	if [[ ! -f "$HISTORY_FILE" ]]; then
-		echo "[]" >"$HISTORY_FILE"
-	fi
+  mkdir -p "$CACHE_DIR" "$CONFIG_DIR"
+  if [[ ! -f "$HISTORY_FILE" ]]; then
+    echo "[]" >"$HISTORY_FILE"
+  elif ! jq -e 'type == "array"' "$HISTORY_FILE" >/dev/null 2>&1; then
+    echo "Warning: History file corrupted, resetting" >&2
+    echo "[]" >"$HISTORY_FILE"
+  fi
 }
 
 # Load configuration from file
 load_config() {
-	if [[ -f "$CONFIG_FILE" ]]; then
-		# shellcheck source=/dev/null
-		source "$CONFIG_FILE"
-	fi
+  if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+  fi
 }
 
 # Setup cleanup trap
 setup_cleanup() {
-	TMPDIR=$(mktemp -d)
-	trap 'rm -rf "$TMPDIR"' EXIT
+  TMPDIR=$(mktemp -d)
+  trap 'rm -rf "$TMPDIR"' EXIT
 }
 
 # Validate required dependencies
 check_dependencies() {
-	local missing_deps=()
+  local missing_deps=()
 
-	# Required dependencies
-	local required_deps=("yt-dlp" "mpv" "jq" "xh")
-	for dep in "${required_deps[@]}"; do
-		if ! command -v "$dep" &>/dev/null; then
-			missing_deps+=("$dep")
-		fi
-	done
+  # Required dependencies
+  local required_deps=("yt-dlp" "mpv" "jq" "curl")
+  for dep in "${required_deps[@]}"; do
+    if ! command -v "$dep" &>/dev/null; then
+      missing_deps+=("$dep")
+    fi
+  done
 
-	# Menu system dependency (at least one required)
-	if ! command -v "fzf" &>/dev/null && ! command -v "rofi" &>/dev/null; then
-		missing_deps+=("fzf or rofi")
-	fi
+  # Menu system check (optional - we have fallback)
+  local has_advanced_menu=false
+  if command -v "fzf" &>/dev/null || command -v "rofi" &>/dev/null; then
+    has_advanced_menu=true
+  fi
 
-	# Thumbnail dependency (optional but recommended)
-	if ! command -v "chafa" &>/dev/null; then
-		echo "Warning: chafa not found - thumbnails will not be displayed" >&2
-	fi
+  if [[ "$has_advanced_menu" == false ]]; then
+    echo "Info: Using basic menu system (fzf/rofi not found)" >&2
+    use_rofi=false # Force fallback to bash menu
+  fi
 
-	if [[ ${#missing_deps[@]} -ne 0 ]]; then
-		echo "Error: Missing required dependencies: ${missing_deps[*]}" >&2
-		echo "Please install the missing packages and try again." >&2
-		exit 1
-	fi
+  # Optional dependencies info - only show on first run or when explicitly requested
+  local show_optional_info="${YTSURF_SHOW_INFO:-false}"
+  
+  if [[ "$show_optional_info" == "true" ]]; then
+    if ! command -v "chafa" &>/dev/null; then
+      echo "Info: chafa not found - thumbnails will not be displayed" >&2
+    fi
+
+    if ! command -v "notify-send" &>/dev/null; then
+      echo "Info: notify-send not found - using terminal notifications" >&2
+    fi
+  fi
+
+  if [[ ${#missing_deps[@]} -ne 0 ]]; then
+    echo "Error: Missing required dependencies: ${missing_deps[*]}" >&2
+    echo "Please install the missing packages and try again." >&2
+    exit 1
+  fi
+}
+#=============================================================================
+# NOTIFICATION SYSTEM
+#=============================================================================
+show_notification() {
+  local title="$1"
+  local message="$2"
+  local icon="${3:-}"
+
+  if command -v notify-send &>/dev/null; then
+    if [[ -n "$icon" ]]; then
+      notify-send -t 5000 -i "$icon" "$title" "$message"
+    else
+      notify-send -t 5000 "$title" "$message"
+    fi
+  else
+    # Fallback to terminal output with visual formatting
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🎵 [$title] $message"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  fi
+}
+#=============================================================================
+# MENU SYSTEM FALLBACKS
+#=============================================================================
+bash_select_menu() {
+  local prompt="$1"
+  shift
+  local items=("$@")
+
+  if [[ ${#items[@]} -eq 0 ]]; then
+    echo "No items available for selection." >&2
+    return 1
+  fi
+
+  echo
+  echo "── $prompt ──"
+  echo
+
+  # Display numbered options
+  for i in "${!items[@]}"; do
+    printf "%2d) %s\n" "$((i + 1))" "${items[$i]}"
+  done
+
+  echo
+  while true; do
+    if ! read -p "Select option (1-${#items[@]}, or 'q' to quit): " choice; then
+      echo "" >&2
+      return 1
+    fi
+
+    # Handle quit
+    if [[ "$choice" == "q" || "$choice" == "Q" ]]; then
+      return 1
+    fi
+
+    # Validate numeric input
+    if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#items[@]})); then
+      echo "${items[$((choice - 1))]}"
+      return 0
+    else
+      echo "Invalid selection. Please enter a number between 1 and ${#items[@]}." >&2
+    fi
+  done
 }
 
+get_user_input() {
+  local prompt="$1"
+  local input=""
+
+  read -p "$prompt " input
+  echo "$input"
+}
 #=============================================================================
 # ARGUMENT PARSING
 #=============================================================================
 
 parse_arguments() {
-	while [[ $# -gt 0 ]]; do
-		case "$1" in
-		--help | -h)
-			print_help
-			exit 0
-			;;
-		--version | -v)
-			print_version
-			exit 0
-			;;
-		--rofi)
-			use_rofi=true
-			shift
-			;;
-		--audio)
-			audio_only=true
-			shift
-			;;
-		--history)
-			history_mode=true
-			shift
-			;;
-		--download)
-			download_mode=true
-			shift
-			;;
-		--format)
-			format_selection=true
-			shift
-			;;
-		--limit)
-			shift
-			if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
-				limit="$1"
-				shift
-			else
-				echo "Error: --limit requires a number" >&2
-				exit 1
-			fi
-			;;
-		*)
-			query="$*"
-			break
-			;;
-		esac
-	done
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --help | -h)
+      print_help
+      exit 0
+      ;;
+    --version | -v)
+      print_version
+      exit 0
+      ;;
+    --rofi)
+      if command -v rofi &>/dev/null; then
+        use_rofi=true
+      else
+        echo "Error: rofi is not installed. Please install rofi or use fzf instead." >&2
+        exit 1
+      fi
+      shift
+      ;;
+    --audio)
+      audio_only=true
+      shift
+      ;;
+    --history)
+      history_mode=true
+      shift
+      ;;
+    --download)
+      download_mode=true
+      shift
+      ;;
+    --format)
+      format_selection=true
+      shift
+      ;;
+    --limit)
+      shift
+      if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
+        limit="$1"
+        shift
+      else
+        echo "Error: --limit requires a number" >&2
+        exit 1
+      fi
+      ;;
+    *)
+      query="$*"
+      break
+      ;;
+    esac
+  done
 }
 
 #=============================================================================
@@ -203,23 +295,27 @@ parse_arguments() {
 #=============================================================================
 
 select_action() {
-	local chosen_action
-	local prompt="Select Action:"
-	local header="Available Actions"
-	local items=("watch" "download")
+  local chosen_action
+  local prompt="Select Action:"
+  local header="Available Actions"
+  local items=("watch" "download")
+  if [[ "$use_rofi" == true ]] && command -v rofi &>/dev/null; then
+    chosen_action=$(printf "%s\n" "${items[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
+  elif [[ "$use_rofi" == false ]] && command -v fzf &>/dev/null; then
+    chosen_action=$(printf "%s\n" "${items[@]}" | fzf --prompt="$prompt" --header="$header")
+  else
+    chosen_action=$(bash_select_menu "$prompt" "${items[@]}")
+  fi
 
-	if [[ "$use_rofi" == true ]]; then
-		chosen_action=$(printf "%s\n" "${items[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
-	elif [[ "$use_rofi" == false ]]; then
-		chosen_action=$(printf "%s\n" "${items[@]}" | fzf --prompt="$prompt" --header="$header")
-	fi
-
-	if [[ "$chosen_action" == "watch" ]]; then
-		echo false
-	else
-		echo true
-	fi
-	return 0
+  if [[ -z "$chosen_action" ]]; then
+    return 1
+  elif [[ "$chosen_action" == "watch" ]]; then
+    echo false
+    return 0
+  else
+    echo true
+    return 0
+  fi
 }
 
 #=============================================================================
@@ -227,75 +323,70 @@ select_action() {
 #=============================================================================
 
 select_content() {
-	echo "action"
-	local chosen_action
-	local prompt="Select Action:"
-	local header="Available Actions"
-	local items=("watch" "download")
-
-	if [[ "$use_rofi" == true ]]; then
-		chosen_action=$(printf "%s\n" "${items[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
-	elif [[ "$use_rofi" == false ]]; then
-		chosen_action=$(printf "%s\n" "${items[@]}" | fzf --prompt="$prompt" --header="$header")
-	fi
-	echo "$chosen_action"
-	return 0
+  local chosen_action
+  local prompt="Select Action:"
+  local header="Available Actions"
+  local items=("watch" "download")
+  if [[ "$use_rofi" == true ]] && command -v rofi &>/dev/null; then
+    chosen_action=$(printf "%s\n" "${items[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
+  elif [[ "$use_rofi" == false ]] && command -v fzf &>/dev/null; then
+    chosen_action=$(printf "%s\n" "${items[@]}" | fzf --prompt="$prompt" --header="$header")
+  else
+    chosen_action=$(bash_select_menu "$prompt" "${items[@]}")
+  fi
+  echo "$chosen_action"
+  return 0
 }
+
 #=============================================================================
 # FORMAT SELECTION
 #=============================================================================
 
 select_format() {
-	local video_url="$1"
+  local video_url="$1"
+  # If --audio is passed with --format, non-interactively select bestaudio
+  if [[ "$audio_only" = true ]]; then
+    echo "bestaudio"
+    return 0
+  fi
+  # Get available formats
+  local format_list
+  if ! format_list=$(yt-dlp -F "$video_url" 2>/dev/null); then
+    echo "Error: Could not retrieve formats for the selected video." >&2
+    return 1
+  fi
+  # Extract resolution options
+  local format_options=()
+  mapfile -t format_options < <(echo "$format_list" | grep -oE '[0-9]+p[0-9]*' | sort -rn | uniq)
+  if [[ ${#format_options[@]} -eq 0 ]]; then
+    echo "Error: No video formats found." >&2
+    return 1
+  fi
+  # Present options to user
+  local chosen_res
+  local prompt="Select video quality:"
+  local header="Available Resolutions"
+  if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
+    chosen_res=$(printf "%s\n" "${format_options[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
+  elif [[ "$use_rofi" = false ]] && command -v fzf &>/dev/null; then
+    chosen_res=$(printf "%s\n" "${format_options[@]}" | fzf --prompt="$prompt" --header="$header")
+  else
+    chosen_res=$(bash_select_menu "$prompt" "${format_options[@]}")
+  fi
 
-	# If --audio is passed with --format, non-interactively select bestaudio
-	if [[ "$audio_only" = true ]]; then
-		echo "bestaudio"
-		return 0
-	fi
-
-	# Get available formats
-	local format_list
-	if ! format_list=$(yt-dlp -F "$video_url" 2>/dev/null); then
-		echo "Error: Could not retrieve formats for the selected video." >&2
-		return 1
-	fi
-
-	# Extract resolution options
-	local format_options=()
-	mapfile -t format_options < <(echo "$format_list" | grep -oE '[0-9]+p[0-9]*' | sort -rn | uniq)
-
-	if [[ ${#format_options[@]} -eq 0 ]]; then
-		echo "Error: No video formats found." >&2
-		return 1
-	fi
-
-	# Present options to user
-	local chosen_res
-	local prompt="Select video quality:"
-	local header="Available Resolutions"
-
-	if [[ "$use_rofi" = true ]]; then
-		chosen_res=$(printf "%s\n" "${format_options[@]}" | rofi -dmenu -p "$prompt" -mesg "$header")
-	else
-		chosen_res=$(printf "%s\n" "${format_options[@]}" | fzf --prompt="$prompt" --header="$header")
-	fi
-
-	# Process selection
-	if [[ -z "$chosen_res" ]]; then
-		return 1 # User cancelled
-	fi
-
-	local chosen_format
-	if [[ "$chosen_res" == "best" || "$chosen_res" == "worst" ]]; then
-		chosen_format="$chosen_res"
-	else
-		local height=${chosen_res%p*}
-		chosen_format="bestvideo[height<=${height}]+bestaudio/best"
-	fi
-
-	echo "$chosen_format"
-	return 0
+  # Process selection
+  if [[ -z "$chosen_res" ]]; then
+    return 1 # User cancelled
+  fi
+  local chosen_format
+  if [[ "$chosen_res" == "best" || "$chosen_res" == "worst" ]]; then
+    chosen_format="$chosen_res"
+  else
+    local height=${chosen_res%p*}
+    chosen_format="bestvideo[height<=${height}]+bestaudio/best"
+  fi
+  echo "$chosen_format"
+  return 0
 }
 
 #=============================================================================
@@ -303,79 +394,69 @@ select_format() {
 #=============================================================================
 
 perform_action() {
-	local video_url="$1"
-	local video_title="$2"
-	local img_path="$3"
-
-	# Get format if format selection is enabled
-
-	if [[ "$download_mode" == false ]]; then
-		local selection
-		if ! selection="$(select_action)"; then
-			echo "Action selection cancelled" >&2
-			return 1
-		fi
-		download_mode="$selection"
-	fi
-
-	local format_code=""
-	if [[ "$format_selection" = true ]]; then
-		if ! format_code=$(select_format "$video_url"); then
-			echo "Format selection cancelled." >&2
-			return 1
-		fi
-	fi
-
-	echo "▶ Performing action on: $video_title"
-
-	if [[ "$download_mode" = true ]]; then
-		notify-send -t 5000 -i "$img_path" "Ytsurf" "Downloading to $video_title"
-		download_video "$video_url" "$format_code"
-	else
-		notify-send -t 5000 -i "$img_path" "Ytsurf" "Playing $video_title"
-		play_video "$video_url" "$format_code"
-	fi
+  local video_url="$1"
+  local video_title="$2"
+  local img_path="$3"
+  # Get format if format selection is enabled
+  if [[ "$download_mode" == false ]]; then
+    local selection
+    if ! selection="$(select_action)"; then
+      echo "Action selection cancelled" >&2
+      return 1
+    fi
+    download_mode="$selection"
+  fi
+  local format_code=""
+  if [[ "$format_selection" == "true" ]]; then
+    if ! format_code=$(select_format "$video_url"); then
+      echo "Format selection cancelled." >&2
+      return 1
+    fi
+  fi
+  echo "▶ Performing action on: $video_title"
+  if [[ "$download_mode" = true ]]; then
+    show_notification "Ytsurf" "Downloading $video_title" "$img_path"
+    download_video "$video_url" "$format_code"
+  else
+    show_notification "Ytsurf" "Playing $video_title" "$img_path"
+    play_video "$video_url" "$format_code"
+  fi
 }
 
 download_video() {
-	local video_url="$1"
-	local format_code="$2"
-
-	mkdir -p "$download_dir"
-	echo "Downloading to $download_dir..."
-
-	local yt_dlp_args=(
-		-o "$download_dir/%(title)s [%(id)s].%(ext)s"
-		--audio-quality 0
-	)
-
-	if [[ "$audio_only" = true ]]; then
-		yt_dlp_args+=(-x --audio-format mp3)
-	else
-		yt_dlp_args+=(--remux-video mp4)
-		if [[ -n "$format_code" ]]; then
-			yt_dlp_args+=(--format "$format_code")
-		fi
-	fi
-
-	yt-dlp "${yt_dlp_args[@]}" "$video_url"
+  local video_url="$1"
+  local format_code="$2"
+  if ! mkdir -p "$download_dir"; then
+    echo "Error: Cannot create download directory: $download_dir" >&2
+    return 1
+  fi
+  echo "Downloading to $download_dir..."
+  local yt_dlp_args=(
+    -o "$download_dir/%(title)s [%(id)s].%(ext)s"
+    --audio-quality 0
+  )
+  if [[ "$audio_only" = true ]]; then
+    yt_dlp_args+=(-x --audio-format mp3)
+  else
+    yt_dlp_args+=(--remux-video mp4)
+    if [[ -n "$format_code" ]]; then
+      yt_dlp_args+=(--format "$format_code")
+    fi
+  fi
+  yt-dlp "${yt_dlp_args[@]}" "$video_url"
 }
 
 play_video() {
-	local video_url="$1"
-	local format_code="$2"
-
-	local mpv_args=(--really-quiet)
-
-	if [[ "$audio_only" = true ]]; then
-		mpv_args+=(--no-video)
-	fi
-
-	if [[ -n "$format_code" ]]; then
-		mpv_args+=(--ytdl-format="$format_code")
-	fi
-
-	mpv "${mpv_args[@]}" "$video_url"
+  local video_url="$1"
+  local format_code="$2"
+  local mpv_args=(--really-quiet)
+  if [[ "$audio_only" = true ]]; then
+    mpv_args+=(--no-video)
+  fi
+  if [[ -n "$format_code" ]]; then
+    mpv_args+=(--ytdl-format="$format_code")
+  fi
+  mpv "${mpv_args[@]}" "$video_url"
 }
 
 #=============================================================================
@@ -383,34 +464,31 @@ play_video() {
 #=============================================================================
 
 add_to_history() {
-	local video_id="$1"
-	local video_title="$2"
-	local video_duration="$3"
-	local video_author="$4"
-	local video_views="$5"
-	local video_published="$6"
-	local video_thumbnail="$7"
-
-	local tmp_history
-	tmp_history="$(mktemp)"
-
-	# Validate existing JSON
-	if ! jq empty "$HISTORY_FILE" 2>/dev/null; then
-		echo "[]" >"$HISTORY_FILE"
-	fi
-
-	# Create new entry and merge with existing history
-	jq -n \
-		--arg title "$video_title" \
-		--arg id "$video_id" \
-		--arg duration "$video_duration" \
-		--arg author "$video_author" \
-		--arg views "$video_views" \
-		--arg published "$video_published" \
-		--arg thumbnail "$video_thumbnail" \
-		--argjson max_entries "$max_history_entries" \
-		--slurpfile existing "$HISTORY_FILE" \
-		'
+  local video_id="$1"
+  local video_title="$2"
+  local video_duration="$3"
+  local video_author="$4"
+  local video_views="$5"
+  local video_published="$6"
+  local video_thumbnail="$7"
+  local tmp_history
+  tmp_history="$(mktemp)"
+  # Validate existing JSON
+  if ! jq empty "$HISTORY_FILE" 2>/dev/null; then
+    echo "[]" >"$HISTORY_FILE"
+  fi
+  # Create new entry and merge with existing history
+  jq -n \
+    --arg title "$video_title" \
+    --arg id "$video_id" \
+    --arg duration "$video_duration" \
+    --arg author "$video_author" \
+    --arg views "$video_views" \
+    --arg published "$video_published" \
+    --arg thumbnail "$video_thumbnail" \
+    --argjson max_entries "$max_history_entries" \
+    --slurpfile existing "$HISTORY_FILE" \
+    '
         {
             title: $title,
             id: $id,
@@ -425,73 +503,73 @@ add_to_history() {
         .[0:$max_entries]
         ' >"$tmp_history"
 
-	# Atomic move
-	mv "$tmp_history" "$HISTORY_FILE"
+  # Atomic move
+  if ! mv "$tmp_history" "$HISTORY_FILE"; then
+    echo "Error: Failed to update history file" >&2
+    rm -f "$tmp_history"
+    return 1
+  fi
 }
 
 handle_history_mode() {
-	if [[ ! -s "$HISTORY_FILE" ]]; then
-		echo "No viewing history found."
-		exit 0
-	fi
-
-	local json_data
-	if ! json_data=$(cat "$HISTORY_FILE" 2>/dev/null); then
-		echo "Error: Could not read history file." >&2
-		exit 1
-	fi
-
-	local history_titles=()
-	local history_ids=()
-
-	mapfile -t history_ids < <(echo "$json_data" | jq -r '.[].id' 2>/dev/null)
-	mapfile -t history_titles < <(echo "$json_data" | jq -r '.[].title' 2>/dev/null)
-
-	if [[ ${#history_titles[@]} -eq 0 ]]; then
-		echo "History is empty or corrupted."
-		exit 0
-	fi
-
-	# Select from history
-	local selected_title
-	selected_title=$(select_from_menu "${history_titles[@]}" "Watch history:" "$json_data" true)
-
-	if [[ -z "$selected_title" ]]; then
-		echo "No selection made."
-		exit 1
-	fi
-
-	# Find selected video
-	local selected_index=-1
-	for i in "${!history_titles[@]}"; do
-		if [[ "${history_titles[$i]}" == "$selected_title" ]]; then
-			selected_index=$i
-			break
-		fi
-	done
-
-	if [[ $selected_index -lt 0 ]]; then
-		echo "Error: Could not resolve selected video." >&2
-		exit 1
-	fi
-
-	# Extract video details
-	local video_id video_url
-	video_id="${history_ids[$selected_index]}"
-	video_url="https://www.youtube.com/watch?v=$video_id"
-
-	local video_duration video_author video_views video_published video_thumbnail img_path
-	video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
-	video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
-	video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
-	video_published=$(echo "$json_data" | jq -r ".[$selected_index].published")
-	video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail")
-
-	img_path="$TMPDIR/thumb_$video_id.jpg"
-
-	# Update history and perform action
-	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
-	perform_action "$video_url" "$selected_title" "$img_path"
+  if [[ ! -s "$HISTORY_FILE" ]]; then
+    echo "No viewing history found."
+    exit 0
+  fi
+  local json_data
+  if ! json_data=$(cat "$HISTORY_FILE" 2>/dev/null); then
+    echo "Error: Could not read history file." >&2
+    exit 1
+  fi
+  local history_titles=()
+  local history_ids=()
+  mapfile -t history_ids < <(echo "$json_data" | jq -r '.[].id' 2>/dev/null)
+  mapfile -t history_titles < <(echo "$json_data" | jq -r '.[].title' 2>/dev/null)
+  if [[ ${#history_titles[@]} -eq 0 ]]; then
+    echo "History is empty or corrupted."
+    exit 0
+  fi
+  # Select from history
+  local selected_title
+  selected_title=$(select_from_menu "${history_titles[@]}" "Watch history:" "$json_data" true)
+  if [[ -z "$selected_title" ]]; then
+    echo "No selection made."
+    exit 1
+  fi
+  # Find selected video
+  local selected_index=-1
+  for i in "${!history_titles[@]}"; do
+    if [[ "${history_titles[$i]}" == "$selected_title" ]]; then
+      selected_index=$i
+      break
+    fi
+  done
+  if [[ $selected_index -lt 0 ]]; then
+    echo "Error: Could not resolve selected video." >&2
+    exit 1
+  fi
+  # Extract video details
+  local video_id video_url
+  if [[ $selected_index -ge ${#history_ids[@]} ]]; then
+    echo "Error: History data mismatch" >&2
+    exit 1
+  fi
+  video_id="${history_ids[$selected_index]}"
+  if [[ -z "$video_id" || "$video_id" == "null" ]]; then
+    echo "Error: Invalid video ID in history" >&2
+    exit 1
+  fi
+  video_url="https://www.youtube.com/watch?v=$video_id"
+  local video_duration video_author video_views video_published video_thumbnail img_path
+  video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
+  video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
+  video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
+  video_published=$(echo "$json_data" | jq -r ".[$selected_index].published")
+  video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail")
+  img_path="$TMPDIR/thumb_$video_id.jpg"
+  # Update history and perform action
+  add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
+  perform_action "$video_url" "$selected_title" "$img_path"
 }
 
 #=============================================================================
@@ -499,50 +577,46 @@ handle_history_mode() {
 #=============================================================================
 
 get_search_query() {
-	if [[ -z "$query" ]]; then
-		if [[ "$use_rofi" = true ]]; then
-			query=$(rofi -dmenu -p "Enter YouTube search:")
-		else
-			read -rp "Enter YouTube search: " query
-		fi
-	fi
+  if [[ -z "$query" ]]; then
+    if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
+      query=$(rofi -dmenu -p "Enter YouTube search:")
+    else
+      query=$(get_user_input "Enter YouTube search:")
+    fi
+  fi
 
-	if [[ -z "$query" ]]; then
-		echo "No query entered. Exiting."
-		exit 1
-	fi
+  if [[ -z "$query" ]]; then
+    echo "No query entered. Exiting."
+    exit 1
+  fi
 }
 
 fetch_search_results() {
-	local search_query="$1"
-	local cache_key cache_file json_data
-
-	# Setup caching
-	cache_key=$(echo -n "$search_query" | sha256sum | cut -d' ' -f1)
-	cache_file="$CACHE_DIR/$cache_key.json"
-
-	# Check cache (10 minute expiry)
-	if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10 2>/dev/null) ]]; then
-		cat "$cache_file"
-		return 0
-	fi
-
-	# Fetch new results
-	local encoded_query
-	encoded_query=$(printf '%s' "$search_query" | jq -sRr @uri)
-
-	if ! json_data=$(xh "https://www.youtube.com/results?search_query=${encoded_query}&sp=EgIQAQ%253D%253D&hl=en&gl=US" 2>/dev/null); then
-		echo "Error: Failed to fetch search results." >&2
-		return 1
-	fi
-
-	# Parse results
+  local search_query="$1"
+  local cache_key cache_file json_data
+  # Setup caching
+  cache_key=$(echo -n "$search_query" | sha256sum | cut -d' ' -f1)
+  cache_file="$CACHE_DIR/$cache_key.json"
+  # Check cache (10 minute expiry)
+  if [[ -f "$cache_file" && $(find "$cache_file" -mmin -10 2>/dev/null) ]]; then
+    if cat "$cache_file" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  # Fetch new results
+  local encoded_query
+  encoded_query=$(printf '%s' "$search_query" | jq -sRr @uri)
+  if ! json_data=$(curl -fsSL "https://www.youtube.com/results?search_query=${encoded_query}&sp=EgIQAQ%253D%253D&hl=en&gl=US" 2>/dev/null); then
+    echo "Error: Failed to fetch search results." >&2
+    return 1
+  fi
+  # Parse results
   local parsed_data
   parsed_data=$(echo "$json_data" |
-      sed -n '/var ytInitialData = {/,/};$/p' |
-      sed '1s/^.*var ytInitialData = //' |
-      sed '$s/;$//' |
-      jq -r "
+    sed -n '/var ytInitialData = {/,/};$/p' |
+    sed '1s/^.*var ytInitialData = //' |
+    sed '$s/;$//' |
+    jq -r "
       [
         .. | objects |
         select(has(\"videoRenderer\")) |
@@ -558,20 +632,18 @@ fetch_search_results() {
       ] | .[:${limit}]
       " 2>/dev/null)
 
-	if [[ -z "$parsed_data" || "$parsed_data" == "null" ]]; then
-		echo "Error: Failed to parse search results." >&2
-		return 1
-	fi
-
-	# Cache results
-	echo "$parsed_data" >"$cache_file"
-	echo "$parsed_data"
+  if [[ -z "$parsed_data" || "$parsed_data" == "null" || "$parsed_data" == "[]" ]]; then
+    echo "Error: No search results found or failed to parse." >&2
+    return 1
+  fi
+  # Cache results
+  echo "$parsed_data" >"$cache_file"
+  echo "$parsed_data"
 }
 
 create_preview_script_fzf() {
-	local is_history="${1:-false}"
-
-	cat <<'EOF'
+  local is_history="${1:-false}"
+  cat <<'EOF'
 idx=$(($1))
 id=$(echo "$json_data" | jq -r ".[$idx].id" 2>/dev/null)
 title=$(echo "$json_data" | jq -r ".[$idx].title" 2>/dev/null)
@@ -586,11 +658,10 @@ if [[ -n "$id" && "$id" != "null" ]]; then
     echo
 EOF
 
-	if [[ "$is_history" = true ]]; then
-		printf 'echo -e "\033[1;35mFrom History\033[0m"'
-	fi
-
-	cat <<'EOF'
+  if [[ "$is_history" = true ]]; then
+    printf 'echo -e "\033[1;35mFrom History\033[0m"'
+  fi
+  cat <<'EOF'
     echo -e "\033[1;36mTitle:\033[0m \033[1m$title\033[0m"
     echo -e "\033[1;33mDuration:\033[0m $duration"
     echo -e "\033[1;32mViews:\033[0m $views"
@@ -598,7 +669,7 @@ EOF
     echo -e "\033[1;34mUploaded:\033[0m $published"
     echo
     echo
-    
+
     if command -v chafa &>/dev/null; then
         img_path="$TMPDIR/thumb_$id.jpg"
         [[ ! -f "$img_path" ]] && curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
@@ -614,112 +685,107 @@ EOF
 }
 
 create_preview_script_rofi() {
-	local menu=""
-
-	while read -r item; do
-		title=$(jq -r '.title' <<<"$item")
-		id=$(jq -r '.id' <<<"$item")
-		thumbnail=$(jq -r '.thumbnail' <<<"$item")
-		img_path="$TMPDIR/thumb_$id.jpg"
-
-		[[ ! -f "$img_path" ]] && curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
-
-		menu+="$title\0icon\x1fthumbnail://$img_path\n"
-	done < <(jq -c ".[:$limit][]" <<<"$json_data")
-
-	printf "%b" "$menu"
+  local menu=""
+  while read -r item; do
+    title=$(jq -r '.title' <<<"$item")
+    id=$(jq -r '.id' <<<"$item")
+    thumbnail=$(jq -r '.thumbnail' <<<"$item")
+    img_path="$TMPDIR/thumb_$id.jpg"
+    [[ ! -f "$img_path" ]] && curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
+    menu+="$title\0icon\x1fthumbnail://$img_path\n"
+  done < <(jq -c ".[:$limit][]" <<<"$json_data")
+  printf "%b" "$menu"
 }
 
 select_from_menu() {
-	local menu_items=("$@")
-	local prompt="${menu_items[-3]}"
-	local json_data="${menu_items[-2]}"
-	local is_history="${menu_items[-1]:-false}"
+  local menu_items=("$@")
+  local prompt="${menu_items[-3]}"
+  local json_data="${menu_items[-2]}"
+  local is_history="${menu_items[-1]:-false}"
 
-	# Remove the last 3 items (prompt, json_data, is_history) from menu_items
-	unset 'menu_items[-1]' 'menu_items[-1]' 'menu_items[-1]'
+  # Remove the last 3 items (prompt, json_data, is_history) from menu_items
+  if [[ ${#menu_items[@]} -ge 3 ]]; then
+    unset 'menu_items[-1]' 'menu_items[-1]' 'menu_items[-1]'
+  else
+    echo "Error: Invalid menu configuration" >&2
+    return 1
+  fi
 
-	if [[ ${#menu_items[@]} -eq 0 ]]; then
-		echo "No items to select from." >&2
-		return 1
-	fi
+  if [[ ${#menu_items[@]} -eq 0 ]]; then
+    echo "No items to select from." >&2
+    return 1
+  fi
 
-	# Export data for preview script
-	export json_data TMPDIR
+  # Export data for preview script
+  export json_data TMPDIR
+  local selected_item=""
 
-	local selected_item=""
-	if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
-		selected_item=$(create_preview_script_rofi | rofi -dmenu -show-icons)
-	elif command -v fzf &>/dev/null; then
-		local preview_script
-		preview_script=$(create_preview_script_fzf "$is_history")
+  if [[ "$use_rofi" = true ]] && command -v rofi &>/dev/null; then
+    selected_item=$(create_preview_script_rofi | rofi -dmenu -show-icons)
+  elif [[ "$use_rofi" = false ]] && command -v fzf &>/dev/null; then
+    local preview_script
+    preview_script=$(create_preview_script_fzf "$is_history")
+    selected_item=$(printf "%s\n" "${menu_items[@]}" | fzf \
+      --prompt="$prompt" \
+      --preview="bash -c '$preview_script' -- {n}")
+  else
+    # Fallback to basic bash menu
+    selected_item=$(bash_select_menu "$prompt" "${menu_items[@]}")
+  fi
 
-		selected_item=$(printf "%s\n" "${menu_items[@]}" | fzf \
-			--prompt="$prompt" \
-			--preview="bash -c '$preview_script' -- {n}")
-	else
-		echo "Error: Neither fzf nor rofi is available for the interactive menu." >&2
-		return 1
-	fi
-
-	echo "$selected_item"
+  echo "$selected_item"
 }
 
 handle_search_mode() {
-	get_search_query
-
-	local json_data
-	if ! json_data=$(fetch_search_results "$query"); then
-		echo "Failed to fetch search results for '$query'"
-		exit 1
-	fi
-
-	# Build menu list
-	local menu_list=()
-	mapfile -t menu_list < <(echo "$json_data" | jq -r '.[].title' 2>/dev/null)
-
-	if [[ ${#menu_list[@]} -eq 0 ]]; then
-		echo "No results found for '$query'"
-		exit 0
-	fi
-
-	# Select video
-	local selected_title
-	selected_title=$(select_from_menu "${menu_list[@]}" "Search YouTube:" "$json_data" false)
-
-	if [[ -z "$selected_title" ]]; then
-		echo "No selection made."
-		exit 1
-	fi
-
-	# Find selected video index
-	local selected_index=-1
-	for i in "${!menu_list[@]}"; do
-		if [[ "${menu_list[$i]}" == "$selected_title" ]]; then
-			selected_index=$i
-			break
-		fi
-	done
-
-	if [[ $selected_index -lt 0 ]]; then
-		echo "Error: Could not resolve selected video." >&2
-		exit 1
-	fi
-
-	# Extract video details
-	local video_id video_url video_author video_duration video_views video_published video_thumbnail img_path
-	video_id=$(echo "$json_data" | jq -r ".[$selected_index].id")
-	video_url="https://www.youtube.com/watch?v=$video_id"
-	video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
-	video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
-	video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
-	video_published=$(echo "$json_data" | jq -r ".[$selected_index].published")
-	video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail")
-
-	img_path="$TMPDIR/thumb_$video_id.jpg"
-	# Add to history and perform action
-	add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
-	perform_action "$video_url" "$selected_title" "$img_path"
+  get_search_query
+  local json_data
+  if ! json_data=$(fetch_search_results "$query"); then
+    echo "Failed to fetch search results for '$query'"
+    exit 1
+  fi
+  # Build menu list
+  local menu_list=()
+  mapfile -t menu_list < <(echo "$json_data" | jq -r '.[].title' 2>/dev/null)
+  if [[ ${#menu_list[@]} -eq 0 ]]; then
+    echo "No results found for '$query'"
+    exit 0
+  fi
+  # Select video
+  local selected_title
+  selected_title=$(select_from_menu "${menu_list[@]}" "Search YouTube:" "$json_data" false)
+  if [[ -z "$selected_title" ]]; then
+    echo "No selection made."
+    exit 1
+  fi
+  # Find selected video index
+  local selected_index=-1
+  for i in "${!menu_list[@]}"; do
+    if [[ "${menu_list[$i]}" == "$selected_title" ]]; then
+      selected_index=$i
+      break
+    fi
+  done
+  if [[ $selected_index -lt 0 ]]; then
+    echo "Error: Could not resolve selected video." >&2
+    exit 1
+  fi
+  # Extract video details
+  local video_id video_url video_author video_duration video_views video_published video_thumbnail img_path
+  video_id=$(echo "$json_data" | jq -r ".[$selected_index].id")
+  if [[ -z "$video_id" || "$video_id" == "null" ]]; then
+    echo "Error: Invalid video ID" >&2
+    exit 1
+  fi
+  video_url="https://www.youtube.com/watch?v=$video_id"
+  video_author=$(echo "$json_data" | jq -r ".[$selected_index].author")
+  video_duration=$(echo "$json_data" | jq -r ".[$selected_index].duration")
+  video_views=$(echo "$json_data" | jq -r ".[$selected_index].views")
+  video_published=$(echo "$json_data" | jq -r ".[$selected_index].published")
+  video_thumbnail=$(echo "$json_data" | jq -r ".[$selected_index].thumbnail")
+  img_path="$TMPDIR/thumb_$video_id.jpg"
+  # Add to history and perform action
+  add_to_history "$video_id" "$selected_title" "$video_duration" "$video_author" "$video_views" "$video_published" "$video_thumbnail"
+  perform_action "$video_url" "$selected_title" "$img_path"
 }
 
 #=============================================================================
@@ -727,21 +793,19 @@ handle_search_mode() {
 #=============================================================================
 
 main() {
-	# Initialize environment
-	init_directories
-	load_config
-	setup_cleanup
-	check_dependencies
-
-	# Parse command line arguments
-	parse_arguments "$@"
-
-	# Execute appropriate mode
-	if [[ "$history_mode" = true ]]; then
-		handle_history_mode
-	else
-		handle_search_mode
-	fi
+  # Initialize environment
+  init_directories
+  load_config
+  setup_cleanup
+  check_dependencies
+  # Parse command line arguments
+  parse_arguments "$@"
+  # Execute appropriate mode
+  if [[ "$history_mode" = true ]]; then
+    handle_history_mode
+  else
+    handle_search_mode
+  fi
 }
 
 # Run main function with all arguments

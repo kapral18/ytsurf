@@ -3,13 +3,13 @@
 A simple shell script to search YouTube videos from your terminal and play them with mpv.
 
 ## Demo
-<img width="1366" height="768" alt="250814_13h56m36s_screenshot" src="https://github.com/user-attachments/assets/0771f53b-ad16-41a2-9938-9aaaf0eaa1ae" />
 
+<img width="1366" height="768" alt="250814_13h56m36s_screenshot" src="https://github.com/user-attachments/assets/0771f53b-ad16-41a2-9938-9aaaf0eaa1ae" />
 
 ## Features
 
 - Search YouTube from your terminal
-- Interactive selection with `fzf` (thumbnail previews) or `rofi`
+- Interactive selection with `fzf` (thumbnail previews), `rofi`, or simple numbered menu fallback
 - Download videos or audio
 - Select video format/quality
 - External config file for default options
@@ -17,7 +17,9 @@ A simple shell script to search YouTube videos from your terminal and play them 
 - Playback history
 - Audio-only mode
 - Channel search
-- limit search results
+- Limit search results
+- Graceful fallback when advanced tools aren't available
+- Desktop and terminal notifications
 
 ## Installation
 
@@ -41,11 +43,32 @@ Add `~/.local/bin` to your PATH if it's not already there.
 
 ## Dependencies
 
-- **Required:** `bash`, `yt-dlp`, `jq`, `curl`, `mpv`, `fzf`, `chafa`,`ffmpeg` (for fzf thumbnails)
-- **Optional:** `rofi`
+**Required:** `bash`, `yt-dlp`, `jq`, `curl`, `mpv`
 
-Install on Arch Linux:
-`sudo pacman -S yt-dlp jq curl mpv fzf chafa rofi ffmpeg`
+**Optional (with fallbacks):**
+
+- `fzf` or `rofi` - for enhanced menus (falls back to simple numbered menu)
+- `chafa` - for thumbnail previews (falls back to text-only)
+- `notify-send` - for desktop notifications (falls back to terminal output)
+- `ffmpeg` - for video processing
+
+**Note:** Optional dependency warnings are suppressed by default. To see them, set `YTSURF_SHOW_INFO=true` before running ytsurf.
+
+**Install on Arch Linux:**
+
+Minimal installation (required only)
+`sudo pacman -S yt-dlp jq curl mpv`
+
+Full installation (recommended)
+`sudo pacman -S yt-dlp jq curl mpv fzf chafa libnotify ffmpeg rofi`
+
+**Install on Debian/Ubuntu:**
+
+Minimal installation (required only)
+`sudo apt install yt-dlp jq curl mpv`
+
+Full installation (recommended)
+`sudo apt install yt-dlp jq curl mpv fzf chafa libnotify-bin ffmpeg rofi`
 
 ## Usage
 
@@ -68,7 +91,7 @@ ytsurf --format space video
 # View watch history
 ytsurf --history
 
-#use rofi instead of fzf
+# Use rofi instead of fzf (requires rofi to be installed)
 ytsurf --rofi
 
 # interactive use
@@ -83,6 +106,7 @@ You can also run `ytsurf` without arguments to enter interactive search mode. Al
 You can set default options by creating a config file at `~/.config/ytsurf/config`. Command-line flags will always override the config file.
 
 **Example Config:**
+
 ```bash
 # ~/.config/ytsurf/config
 
@@ -94,6 +118,9 @@ audio_only=true
 
 # Set a custom download directory
 download_dir="$HOME/Videos/YouTube"
+
+# Use rofi by default (requires rofi to be installed)
+use_rofi=true
 ```
 
 ## Contributing
