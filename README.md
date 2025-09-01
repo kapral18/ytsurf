@@ -8,18 +8,18 @@ A simple shell script to search YouTube videos from your terminal and play them 
 
 ## Features
 
-- Search YouTube from your terminal
+- Search YouTube from your terminal using yt-dlp's reliable search API
 - Interactive selection with `fzf` (thumbnail previews), `rofi`, or simple numbered menu fallback
 - Download videos or audio
 - Select video format/quality
-- External config file for default options
+- External config file for default options with validation
 - 10-minute result caching
 - Playback history
 - Audio-only mode
-- Channel search
-- Limit search results
+- Limit search results (1-50)
 - Graceful fallback when advanced tools aren't available
 - Desktop and terminal notifications
+- Smart dependency notifications (shown only on first run)
 
 ## Installation
 
@@ -50,25 +50,41 @@ Add `~/.local/bin` to your PATH if it's not already there.
 - `fzf` or `rofi` - for enhanced menus (falls back to simple numbered menu)
 - `chafa` - for thumbnail previews (falls back to text-only)
 - `notify-send` - for desktop notifications (falls back to terminal output)
-- `ffmpeg` - for video processing
+- `ffmpeg` - for video format conversion
 
-**Note:** Optional dependency warnings are suppressed by default. To see them, set `YTSURF_SHOW_INFO=true` before running ytsurf.
+**Note:** Optional dependency information is shown only on first run. To see it again, run:
+
+```bash
+YTSURF_SHOW_INFO=true ytsurf
+```
 
 **Install on Arch Linux:**
 
 Minimal installation (required only)
-`sudo pacman -S yt-dlp jq curl mpv`
+
+```bash
+sudo pacman -S yt-dlp jq curl mpv
+```
 
 Full installation (recommended)
-`sudo pacman -S yt-dlp jq curl mpv fzf chafa libnotify ffmpeg rofi`
+
+```bash
+sudo pacman -S yt-dlp jq curl mpv fzf chafa libnotify ffmpeg rofi
+```
 
 **Install on Debian/Ubuntu:**
 
 Minimal installation (required only)
-`sudo apt install yt-dlp jq curl mpv`
+
+```bash
+sudo apt install yt-dlp jq curl mpv
+```
 
 Full installation (recommended)
-`sudo apt install yt-dlp jq curl mpv fzf chafa libnotify-bin ffmpeg rofi`
+
+```bash
+sudo apt install yt-dlp jq curl mpv fzf chafa libnotify-bin ffmpeg rofi
+```
 
 ## Usage
 
@@ -76,7 +92,7 @@ Full installation (recommended)
 # Basic search
 ytsurf lofi hip hop study
 
-# Search with 25 results instead of the default 10
+# Search with 25 results (max: 50)
 ytsurf --limit 25 dnb mix
 
 # Audio-only playback
@@ -88,29 +104,31 @@ ytsurf --download how to make ramen
 # Select a specific video format before playback/download
 ytsurf --format space video
 
+# Combine audio-only with format selection (auto-selects best audio)
+ytsurf --audio --format podcast
+
 # View watch history
 ytsurf --history
 
 # Use rofi instead of fzf (requires rofi to be installed)
-ytsurf --rofi
+ytsurf --rofi jazz fusion
 
-# interactive use
+# Interactive use
 ytsurf
-
 ```
 
 You can also run `ytsurf` without arguments to enter interactive search mode. All flags can be combined.
 
 ## Configuration
 
-You can set default options by creating a config file at `~/.config/ytsurf/config`. Command-line flags will always override the config file.
+You can set default options by creating a config file at `~/.config/ytsurf/config`. Command-line flags will always override the config file. Invalid config values will be ignored with a warning.
 
 **Example Config:**
 
 ```bash
 # ~/.config/ytsurf/config
 
-# Set a higher default search limit
+# Set a higher default search limit (1-50)
 limit=25
 
 # Always use audio-only mode by default
@@ -121,7 +139,39 @@ download_dir="$HOME/Videos/YouTube"
 
 # Use rofi by default (requires rofi to be installed)
 use_rofi=true
+
+# Maximum number of history entries to keep (default: 100)
+max_history_entries=100
 ```
+
+## Environment Variables
+
+- `YTSURF_SHOW_INFO=true` - Show optional dependency information even after first run
+- `XDG_CACHE_HOME` - Override cache directory location
+- `XDG_CONFIG_HOME` - Override config directory location
+- `XDG_DOWNLOAD_DIR` - Override default download directory
+
+## Troubleshooting
+
+**No search results found:**
+
+- Ensure yt-dlp is up to date: `yt-dlp -U`
+- Check your internet connection
+
+**Format selection not showing options:**
+
+- Some videos may have limited format availability
+- The script will fall back to "best" format automatically
+
+**Rofi not working:**
+
+- Ensure rofi is installed: `command -v rofi`
+- The script will automatically fall back to fzf or basic menu
+
+**Thumbnails not showing:**
+
+- Install `chafa` for terminal thumbnail previews
+- Check that your terminal supports image display
 
 ## Contributing
 
