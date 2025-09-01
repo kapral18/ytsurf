@@ -607,6 +607,9 @@ play_video() {
 
   local mpv_args=(--really-quiet)
 
+  # Fix window size to fit screen properly
+  mpv_args+=(--autofit-larger=100%x100% --autofit=85%x85%)
+
   if [[ "$audio_only" = true ]]; then
     mpv_args+=(--no-video)
   fi
@@ -842,10 +845,15 @@ create_preview_script_fzf() {
 
   cat <<'PREVIEW_SCRIPT'
 #!/bin/bash
-idx=$(($1))
-json_data="$2"
+# fzf passes 1-based line number, convert to 0-based array index
+line_num="$1"
+idx=$((line_num - 1))
+json_file="$2"
 is_history="$3"
 TMPDIR="$4"
+
+# Read JSON from file
+json_data=$(cat "$json_file")
 
 id=$(echo "$json_data" | jq -r ".[$idx].id" 2>/dev/null)
 title=$(echo "$json_data" | jq -r ".[$idx].title" 2>/dev/null)
@@ -876,17 +884,16 @@ PREVIEW_SCRIPT
     if command -v chafa &>/dev/null; then
         img_path="$TMPDIR/thumb_$id.jpg"
         if [[ ! -f "$img_path" ]] && [[ -n "$thumbnail" ]] && [[ "$thumbnail" != "null" ]]; then
-            curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null
+            # Download with timeout and silence
+            timeout 3 curl -fsSL "$thumbnail" -o "$img_path" 2>/dev/null || true
         fi
         if [[ -f "$img_path" ]]; then
-            chafa --symbols=block --size=80x40 "$img_path" 2>/dev/null || echo "(failed to render thumbnail)"
+            chafa --symbols=block --size=60x30 "$img_path" 2>/dev/null || echo "(failed to render thumbnail)"
         fi
-    else
-        echo "(chafa not available - no thumbnail preview)"
     fi
     echo
 else
-    echo "No preview available"
+    echo "No preview available for item $line_num (index $idx)"
 fi
 PREVIEW_SCRIPT
 }
@@ -932,14 +939,19 @@ select_from_menu() {
     selected_item=$(echo -e "$rofi_input" | rofi -dmenu -p "$prompt")
 
   elif [[ "$use_rofi" = false ]] && command -v fzf &>/dev/null; then
-    # Create preview script
+    # Create preview script and JSON data file
     local preview_script="$TMPDIR/preview.sh"
+    local json_file="$TMPDIR/data.json"
+
+    # Write JSON to file to avoid argument length issues
+    echo "$json_data" >"$json_file"
+
     create_preview_script_fzf "$is_history" >"$preview_script"
     chmod +x "$preview_script"
 
     # Use fzf with preview
     selected_item=$(printf "%s\n" "${menu_items[@]}" |
-      fzf --preview="'$preview_script' {n} '$json_data' '$is_history' '$TMPDIR'" \
+      fzf --preview="'$preview_script' {n} '$json_file' '$is_history' '$TMPDIR'" \
         --preview-window=right:50% \
         --prompt="$prompt " \
         --height=100%)
