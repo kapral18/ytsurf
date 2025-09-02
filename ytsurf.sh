@@ -846,8 +846,7 @@ create_preview_script_fzf() {
   cat <<'PREVIEW_SCRIPT'
 #!/bin/bash
 # fzf passes 1-based line number, convert to 0-based array index
-line_num="$1"
-idx=$((line_num - 1))
+idx="$1"
 json_file="$2"
 is_history="$3"
 TMPDIR="$4"
@@ -893,7 +892,7 @@ PREVIEW_SCRIPT
     fi
     echo
 else
-    echo "No preview available for item $line_num (index $idx)"
+    echo "No preview available for index $idx"
 fi
 PREVIEW_SCRIPT
 }
@@ -949,9 +948,13 @@ select_from_menu() {
     create_preview_script_fzf "$is_history" >"$preview_script"
     chmod +x "$preview_script"
 
+    # Save JSON to temp file for preview script
+    local json_file="$TMPDIR/search_results.json"
+    echo "$json_data" >"$json_file"
+
     # Use fzf with preview
     selected_item=$(printf "%s\n" "${menu_items[@]}" |
-      fzf --preview="'$preview_script' {n} '$json_file' '$is_history' '$TMPDIR'" \
+      fzf --preview="bash '$preview_script' {n} '$json_file' '$is_history' '$TMPDIR'" \
         --preview-window=right:50% \
         --prompt="$prompt " \
         --height=100%)
